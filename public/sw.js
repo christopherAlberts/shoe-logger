@@ -1,5 +1,13 @@
-const CACHE = 'shoelogger-v3';
-const PRECACHE = ['/', '/index.html', '/css/app.css', '/js/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'shoelogger-v4';
+const PRECACHE = [
+  '/',
+  '/index.html',
+  '/css/app.css?v=v4',
+  '/js/app.js?v=v4',
+  '/manifest.webmanifest',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -15,6 +23,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return;
+
+  // Always network-first for the service worker script itself (browsers already bypass SW for sw.js updates)
+  if (url.pathname === '/sw.js') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

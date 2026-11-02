@@ -11,6 +11,10 @@ const { uploadsDir } = require('./backend/db');
 const PORT = Number(process.env.PORT) || 8096;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 
+/** HTML/SW/manifest/JS/CSS: no-store so Cloudflare/browsers revalidate (SW cache is shoelogger-v4). */
+const NO_STORE = 'no-cache, no-store, must-revalidate';
+const CACHE_IMAGES = 'public, max-age=604800, immutable';
+
 if (!SESSION_SECRET) {
   console.error('SESSION_SECRET is required. Copy .env.example to .env and set a secret.');
   process.exit(1);
@@ -33,13 +37,53 @@ app.use(
   })
 );
 
-app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
+function setPublicCacheHeaders(res, filePath) {
+  const base = path.basename(filePath).toLowerCase();
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (
+    base === 'sw.js' ||
+    base === 'index.html' ||
+    base === 'manifest.webmanifest' ||
+    ext === '.html' ||
+    ext === '.webmanifest'
+  ) {
+    res.setHeader('Cache-Control', NO_STORE);
+    return;
+  }
+
+  if (ext === '.js' || ext === '.css') {
+    res.setHeader('Cache-Control', NO_STORE);
+    return;
+  }
+
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico', '.woff', '.woff2'].includes(ext)) {
+    res.setHeader('Cache-Control', CACHE_IMAGES);
+    return;
+  }
+
+  res.setHeader('Cache-Control', NO_STORE);
+}
+
+app.use('/uploads', express.static(uploadsDir, {
+  maxAge: '7d',
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+  },
+}));
 app.use(routes);
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0 }));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true,
+    setHeaders: setPublicCacheHeaders,
+  })
+);
 
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+  res.setHeader('Cache-Control', NO_STORE);
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -53,3 +97,4 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`ShoeLogger listening on http://127.0.0.1:${PORT}`);
 });
+
