@@ -2,12 +2,23 @@
 
 const bcrypt = require('bcryptjs');
 const { db } = require('./db');
+const { normalizeUnit } = require('./units');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function publicUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    createdAt: row.created_at,
+    distanceUnit: normalizeUnit(row.distance_unit),
+  };
 }
 
 function validateCredentials(email, password) {
@@ -26,7 +37,9 @@ function requireAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Please sign in.' });
   }
-  const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.session.userId);
+  const user = db
+    .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+    .get(req.session.userId);
   if (!user) {
     req.session = null;
     return res.status(401).json({ error: 'Please sign in.' });
@@ -49,8 +62,11 @@ async function signup(email, password) {
     throw err;
   }
   const password_hash = await bcrypt.hash(pwd, 12);
-  const info = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(normalized, password_hash);
-  return { id: info.lastInsertRowid, email: normalized };
+  const info = db
+    .prepare(`INSERT INTO users (email, password_hash, distance_unit) VALUES (?, ?, 'km')`)
+    .run(normalized, password_hash);
+  const row = db.prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
+  return publicUser(row);
 }
 
 async function login(email, password) {
@@ -67,7 +83,7 @@ async function login(email, password) {
     err.status = 401;
     throw err;
   }
-  return { id: user.id, email: user.email };
+  return publicUser(user);
 }
 
-module.exports = { requireAuth, signup, login, validateCredentials, normalizeEmail };
+module.exports = { requireAuth, signup, login, validateCredentials, normalizeEmail, publicUser };

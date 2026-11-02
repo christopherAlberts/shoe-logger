@@ -19,6 +19,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
+    distance_unit TEXT NOT NULL DEFAULT 'km' CHECK (distance_unit IN ('km', 'mi')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -47,6 +48,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_runs_shoe ON runs(shoe_id);
   CREATE INDEX IF NOT EXISTS idx_runs_user ON runs(user_id);
 `);
+
+function backupDatabase() {
+  if (!fs.existsSync(dbPath)) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(dataDir, `app.db.bak-${stamp}`);
+  fs.copyFileSync(dbPath, backupPath);
+  return backupPath;
+}
+
+function ensureMigrations() {
+  const cols = db.prepare('PRAGMA table_info(users)').all();
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has('distance_unit')) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`ALTER TABLE users ADD COLUMN distance_unit TEXT NOT NULL DEFAULT 'km'`);
+    console.log("Migration: added users.distance_unit (default 'km')");
+  }
+}
+
+ensureMigrations();
 
 function shoeTotals(userId, shoeId = null) {
   const params = [userId];
@@ -77,4 +99,4 @@ function shoeTotals(userId, shoeId = null) {
     .all(...params);
 }
 
-module.exports = { db, dataDir, uploadsDir, shoeTotals };
+module.exports = { db, dataDir, uploadsDir, shoeTotals, backupDatabase, dbPath };

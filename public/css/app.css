@@ -429,3 +429,29 @@ img { max-width: 100%; display: block; }
 .photo-option-camera[hidden] {
   display: none !important;
 }
+
+.unit-label {
+  font-size: 0.7em;
+  font-weight: 650;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.unit-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 1rem 1rem;
+  margin: 0 0 1rem;
+}
+.unit-fieldset legend {
+  padding: 0 0.35rem;
+  font-weight: 650;
+  font-size: 0.9rem;
+}
+.unit-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0;
+  font-weight: 500;
+  cursor: pointer;
+}

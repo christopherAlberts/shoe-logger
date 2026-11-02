@@ -8,7 +8,15 @@ const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const { db, uploadsDir, shoeTotals } = require('./db');
-const { requireAuth, signup, login } = require('./auth');
+const { requireAuth, signup, login, publicUser } = require('./auth');
+const {
+  WEAR_AMBER_KM,
+  WEAR_RED_KM,
+  MAX_RUN_KM,
+  round3,
+  normalizeUnit,
+  parseDistanceKm,
+} = require('./units');
 
 const router = express.Router();
 
@@ -64,8 +72,8 @@ function deletePhoto(photoPath) {
 }
 
 function wearStatus(totalKm) {
-  if (totalKm >= 800) return { level: 'replace', label: 'Replace', barClass: 'bar-red' };
-  if (totalKm >= 500) return { level: 'replace-soon', label: 'Replace soon', barClass: 'bar-amber' };
+  if (totalKm >= WEAR_RED_KM) return { level: 'replace', label: 'Replace', barClass: 'bar-red' };
+  if (totalKm >= WEAR_AMBER_KM) return { level: 'replace-soon', label: 'Replace soon', barClass: 'bar-amber' };
   return { level: 'ok', label: null, barClass: 'bar-green' };
 }
 
@@ -76,20 +84,24 @@ function enrichShoe(row) {
     name: row.name,
     photoUrl: row.photo_path ? `/uploads/${row.photo_path}` : null,
     shoeType: row.shoe_type,
-    startingKm: row.starting_km,
-    loggedKm: row.logged_km,
-    totalKm: Math.round(row.total_km * 100) / 100,
+    startingKm: round3(row.starting_km),
+    loggedKm: round3(row.logged_km),
+    totalKm: round3(row.total_km),
     retired: !!row.retired,
     createdAt: row.created_at,
     wearLevel: wear.level,
     wearLabel: wear.label,
-    progressPct: Math.min(100, Math.round((row.total_km / 800) * 1000) / 10),
+    progressPct: Math.min(100, Math.round((row.total_km / WEAR_RED_KM) * 1000) / 10),
     barClass: wear.barClass,
   };
 }
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function parseRunKm(body) {
+  return parseDistanceKm(body.km, { min: 0, max: MAX_RUN_KM, allowZero: false });
 }
 
 // --- Auth ---
@@ -99,12 +111,14 @@ router.get(
     if (!req.session || !req.session.userId) {
       return res.json({ user: null });
     }
-    const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.session.userId);
+    const user = db
+      .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+      .get(req.session.userId);
     if (!user) {
       req.session = null;
       return res.json({ user: null });
     }
-    res.json({ user: { id: user.id, email: user.email, createdAt: user.created_at } });
+    res.json({ user: publicUser(user) });
   })
 );
 
@@ -114,7 +128,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const user = await signup(req.body.email, req.body.password);
     req.session.userId = user.id;
-    res.status(201).json({ user: { id: user.id, email: user.email } });
+    res.status(201).json({ user });
   })
 );
 
@@ -124,7 +138,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const user = await login(req.body.email, req.body.password);
     req.session.userId = user.id;
-    res.json({ user: { id: user.id, email: user.email } });
+    res.json({ user });
   })
 );
 
@@ -132,6 +146,23 @@ router.post('/api/logout', (req, res) => {
   req.session = null;
   res.json({ ok: true });
 });
+
+// --- Settings ---
+router.patch(
+  '/api/settings',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const unit = normalizeUnit(req.body.distanceUnit);
+    if (req.body.distanceUnit !== 'km' && req.body.distanceUnit !== 'mi') {
+      return res.status(400).json({ error: 'distanceUnit must be "km" or "mi".' });
+    }
+    db.prepare('UPDATE users SET distance_unit = ? WHERE id = ?').run(unit, req.user.id);
+    const user = db
+      .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+      .get(req.user.id);
+    res.json({ user: publicUser(user) });
+  })
+);
 
 // --- Shoes ---
 router.get(
@@ -156,7 +187,8 @@ router.get(
          FROM runs WHERE shoe_id = ? AND user_id = ?
          ORDER BY run_date DESC, id DESC`
       )
-      .all(shoe.id, req.user.id);
+      .all(shoe.id, req.user.id)
+      .map((r) => ({ ...r, km: round3(r.km) }));
     res.json({ shoe, runs });
   })
 );
@@ -177,8 +209,10 @@ router.post(
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Shoe name is required.' });
     const shoeType = req.body.shoeType === 'trail' ? 'trail' : 'road';
-    let startingKm = Number(req.body.startingKm || 0);
-    if (!Number.isFinite(startingKm) || startingKm < 0) startingKm = 0;
+    let startingKm = 0;
+    if (req.body.startingKm != null && req.body.startingKm !== '') {
+      startingKm = parseDistanceKm(req.body.startingKm, { min: 0, max: 100000, allowZero: true });
+    }
 
     let photoPath = null;
     try {
@@ -221,10 +255,7 @@ router.patch(
       req.body.shoeType != null ? (req.body.shoeType === 'trail' ? 'trail' : 'road') : shoe.shoe_type;
     let startingKm = shoe.starting_km;
     if (req.body.startingKm != null && req.body.startingKm !== '') {
-      startingKm = Number(req.body.startingKm);
-      if (!Number.isFinite(startingKm) || startingKm < 0) {
-        return res.status(400).json({ error: 'Starting km must be zero or positive.' });
-      }
+      startingKm = parseDistanceKm(req.body.startingKm, { min: 0, max: 100000, allowZero: true });
     }
     let retired = shoe.retired;
     if (req.body.retired != null) {
@@ -234,9 +265,9 @@ router.patch(
     let photoPath = shoe.photo_path;
     if (req.file) {
       try {
-        const next = await saveShoePhoto(req.file);
+        const nextPhoto = await saveShoePhoto(req.file);
         deletePhoto(photoPath);
-        photoPath = next;
+        photoPath = nextPhoto;
       } catch (_) {
         return res.status(400).json({ error: 'Could not process that image.' });
       }
@@ -272,10 +303,7 @@ router.post(
     const shoe = db.prepare('SELECT * FROM shoes WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id);
     if (!shoe) return res.status(404).json({ error: 'Shoe not found.' });
 
-    const km = Number(req.body.km);
-    if (!Number.isFinite(km) || km <= 0 || km > 500) {
-      return res.status(400).json({ error: 'Enter a distance between 0 and 500 km.' });
-    }
+    const km = parseRunKm(req.body);
     const runDate = String(req.body.runDate || new Date().toISOString().slice(0, 10));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(runDate)) {
       return res.status(400).json({ error: 'Invalid date.' });
@@ -287,10 +315,9 @@ router.post(
       .run(shoe.id, req.user.id, runDate, km, note || null);
 
     const run = db
-      .prepare(
-        `SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`
-      )
+      .prepare(`SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`)
       .get(info.lastInsertRowid);
+    run.km = round3(run.km);
     const rows = shoeTotals(req.user.id, shoe.id);
     res.status(201).json({ run, shoe: enrichShoe(rows[0]) });
   })
@@ -305,10 +332,7 @@ router.patch(
 
     let km = run.km;
     if (req.body.km != null) {
-      km = Number(req.body.km);
-      if (!Number.isFinite(km) || km <= 0 || km > 500) {
-        return res.status(400).json({ error: 'Enter a distance between 0 and 500 km.' });
-      }
+      km = parseRunKm(req.body);
     }
     let runDate = run.run_date;
     if (req.body.runDate != null) {
@@ -331,10 +355,9 @@ router.patch(
     );
 
     const updated = db
-      .prepare(
-        `SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`
-      )
+      .prepare(`SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`)
       .get(run.id);
+    updated.km = round3(updated.km);
     const rows = shoeTotals(req.user.id, run.shoe_id);
     res.json({ run: updated, shoe: enrichShoe(rows[0]) });
   })

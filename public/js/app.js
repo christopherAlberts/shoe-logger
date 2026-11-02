@@ -5,22 +5,29 @@
   const headerActions = document.getElementById('header-actions');
   const toastEl = document.getElementById('toast');
 
+  const KM_PER_MI = 1.609344;
+  const WEAR_AMBER_KM = 500;
+  const WEAR_RED_KM = 800;
+
+  const QUICK_KM = [
+    { label: '5K', km: 5 },
+    { label: '10K', km: 10 },
+    { label: '21.1K', km: 21.1 },
+    { label: '42.2K', km: 42.2 },
+  ];
+
   const state = {
     user: null,
     shoes: [],
-    view: 'loading', // auth | list | detail | loading
+    view: 'loading', // auth | list | detail | settings | loading
     shoeId: null,
     detail: null,
     authMode: 'login',
     error: '',
   };
 
-  const QUICK = [
-    { label: '5K', km: 5 },
-    { label: '10K', km: 10 },
-    { label: '21.1K', km: 21.1 },
-    { label: '42.2K', km: 42.2 },
-  ];
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 
   function toast(msg) {
     toastEl.textContent = msg;
@@ -57,14 +64,64 @@
     return new Date().toISOString().slice(0, 10);
   }
 
-  function formatKm(n) {
-    const v = Number(n) || 0;
-    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  function distanceUnit() {
+    return state.user && state.user.distanceUnit === 'mi' ? 'mi' : 'km';
   }
 
+  function unitLabel() {
+    return distanceUnit() === 'mi' ? 'mi' : 'km';
+  }
 
-  const EYE_OPEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-  const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  function unitWord() {
+    return distanceUnit() === 'mi' ? 'miles' : 'kilometres';
+  }
+
+  function round3(n) {
+    return Math.round(Number(n) * 1000) / 1000;
+  }
+
+  function fromKm(km) {
+    const v = Number(km) || 0;
+    return distanceUnit() === 'mi' ? round3(v / KM_PER_MI) : round3(v);
+  }
+
+  function toKm(displayValue) {
+    const v = Number(displayValue);
+    if (!Number.isFinite(v)) return NaN;
+    return distanceUnit() === 'mi' ? round3(v * KM_PER_MI) : round3(v);
+  }
+
+  /** Sensible display up to 3 decimal places, trim trailing zeros. */
+  function formatDist(kmStored) {
+    const v = fromKm(kmStored);
+    if (Number.isInteger(v)) return String(v);
+    return String(round3(v));
+  }
+
+  function formatDistWithUnit(kmStored) {
+    return `${formatDist(kmStored)} ${unitLabel()}`;
+  }
+
+  function wearCapKm() {
+    return WEAR_RED_KM;
+  }
+
+  function wearThresholdText() {
+    const amber = formatDist(WEAR_AMBER_KM);
+    const red = formatDist(WEAR_RED_KM);
+    const u = unitLabel();
+    return `Amber at ${amber} ${u}, red at ${red} ${u}.`;
+  }
+
+  function quickButtons() {
+    return QUICK_KM.map((q) => {
+      const display = fromKm(q.km);
+      const label = distanceUnit() === 'mi'
+        ? `${q.label} · ${formatDist(q.km)} ${unitLabel()}`
+        : q.label;
+      return { label, displayValue: display, km: q.km };
+    });
+  }
 
   function isMobileCameraDevice() {
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -99,6 +156,10 @@
     return `<div class="${cls}"><div class="placeholder">👟</div></div>`;
   }
 
+  function maxRunDisplay() {
+    return fromKm(500);
+  }
+
   function renderHeader() {
     if (!state.user) {
       headerActions.innerHTML = '';
@@ -106,8 +167,13 @@
     }
     headerActions.innerHTML = `
       <span class="user-chip" title="${escapeHtml(state.user.email)}">${escapeHtml(state.user.email)}</span>
+      <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">Settings</button>
       <button class="btn btn-ghost btn-sm" type="button" id="btn-logout">Log out</button>
     `;
+    document.getElementById('btn-settings').onclick = () => {
+      state.view = 'settings';
+      render();
+    };
     document.getElementById('btn-logout').onclick = async () => {
       await api('/api/logout', { method: 'POST', body: {} });
       state.user = null;
@@ -173,21 +239,65 @@
     };
   }
 
+  function renderSettings() {
+    const unit = distanceUnit();
+    main.innerHTML = `
+      <button class="back-link" type="button" id="btn-back">← Back</button>
+      <section class="card auth-wrap" style="margin-top:0">
+        <h1>Settings</h1>
+        <p class="lead">Distances are stored in kilometres. Choose how they appear for you.</p>
+        <form id="settings-form">
+          <fieldset class="unit-fieldset">
+            <legend>Default distance unit</legend>
+            <label class="unit-option">
+              <input type="radio" name="distanceUnit" value="km" ${unit === 'km' ? 'checked' : ''} />
+              <span>Kilometres (km)</span>
+            </label>
+            <label class="unit-option">
+              <input type="radio" name="distanceUnit" value="mi" ${unit === 'mi' ? 'checked' : ''} />
+              <span>Miles (mi)</span>
+            </label>
+          </fieldset>
+          <p class="hint">Race chips and the 500 / 800 km wear thresholds are shown in your chosen unit. Totals always show the unit label.</p>
+          <button class="btn btn-primary" type="submit">Save settings</button>
+        </form>
+      </section>
+    `;
+    document.getElementById('btn-back').onclick = () => {
+      state.view = 'list';
+      render();
+    };
+    document.getElementById('settings-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const distanceUnitVal = e.target.distanceUnit.value;
+      try {
+        const data = await api('/api/settings', { method: 'PATCH', body: { distanceUnit: distanceUnitVal } });
+        state.user = data.user;
+        toast(`Using ${data.user.distanceUnit === 'mi' ? 'miles' : 'kilometres'}`);
+        state.view = 'list';
+        render();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+  }
+
   function renderList() {
     const active = state.shoes.filter((s) => !s.retired);
     const retired = state.shoes.filter((s) => s.retired);
+    const cap = formatDist(wearCapKm());
     main.innerHTML = `
       <div class="page-head">
         <div>
           <h1>Your shoes</h1>
-          <p>Totals include starting mileage. Amber at 500 km, red at 800 km.</p>
+          <p>Totals include starting mileage. ${wearThresholdText()}</p>
         </div>
         <button class="btn btn-primary" style="width:auto" type="button" id="btn-add-shoe">Add shoe</button>
       </div>
       ${state.shoes.length === 0 ? `
         <div class="card empty">
           <h2>No shoes yet</h2>
-          <p>Add your first pair — photo, name, and optional starting km.</p>
+          <p>Add your first pair — photo, name, and optional starting ${unitLabel()}.</p>
           <button class="btn btn-primary" style="width:auto;margin-top:1rem" type="button" id="btn-add-shoe-empty">Add shoe</button>
         </div>` : `
         <div class="shoe-grid" id="shoe-grid">
@@ -204,6 +314,9 @@
   }
 
   function shoeCardHtml(shoe) {
+    const u = unitLabel();
+    const total = formatDist(shoe.totalKm);
+    const cap = formatDist(wearCapKm());
     return `
       <article class="shoe-card ${shoe.retired ? 'retired' : ''}" data-id="${shoe.id}">
         ${photoBlock(shoe.photoUrl, 'shoe-photo')}
@@ -212,9 +325,9 @@
             <h2 class="shoe-name">${escapeHtml(shoe.name)}</h2>
             ${wearBadge(shoe)}
           </div>
-          <p class="shoe-meta">${escapeHtml(shoe.shoeType)} · ${formatKm(shoe.totalKm)} / 800 km</p>
+          <p class="shoe-meta">${escapeHtml(shoe.shoeType)} · ${total} / ${cap} ${u}</p>
           <div class="km-line">
-            <span class="km-value">${formatKm(shoe.totalKm)} km</span>
+            <span class="km-value">${total} <span class="unit-label">${u}</span></span>
             <span class="km-cap">${shoe.progressPct}%</span>
           </div>
           <div class="progress" aria-hidden="true"><span class="${shoe.barClass}" style="width:${shoe.progressPct}%"></span></div>
@@ -241,6 +354,9 @@
 
   function renderDetail() {
     const { shoe, runs } = state.detail;
+    const u = unitLabel();
+    const cap = formatDist(wearCapKm());
+    const quick = quickButtons();
     main.innerHTML = `
       <button class="back-link" type="button" id="btn-back">← All shoes</button>
       <section class="card">
@@ -253,11 +369,11 @@
             </div>
             <p class="shoe-meta">${escapeHtml(shoe.shoeType)}${shoe.retired ? ' · retired' : ''}</p>
             <div class="km-line">
-              <span class="km-value">${formatKm(shoe.totalKm)} km</span>
-              <span class="km-cap">of 800 km</span>
+              <span class="km-value">${formatDist(shoe.totalKm)} <span class="unit-label">${u}</span></span>
+              <span class="km-cap">of ${cap} ${u}</span>
             </div>
             <div class="progress" aria-hidden="true"><span class="${shoe.barClass}" style="width:${shoe.progressPct}%"></span></div>
-            <p class="hint" style="margin-top:0.6rem">Starting ${formatKm(shoe.startingKm)} km + logged ${formatKm(shoe.loggedKm)} km</p>
+            <p class="hint" style="margin-top:0.6rem">Starting ${formatDistWithUnit(shoe.startingKm)} + logged ${formatDistWithUnit(shoe.loggedKm)}</p>
             <div class="row" style="margin-top:0.9rem">
               <button class="btn btn-secondary btn-sm" type="button" id="btn-edit-shoe">Edit</button>
               <button class="btn btn-secondary btn-sm" type="button" id="btn-retire">${shoe.retired ? 'Unretire' : 'Retire'}</button>
@@ -270,7 +386,7 @@
       <h2 class="section-title">Log a run</h2>
       <section class="card">
         <div class="quick-row">
-          ${QUICK.map((q) => `<button class="btn btn-chip" type="button" data-km="${q.km}">${q.label}</button>`).join('')}
+          ${quick.map((q) => `<button class="btn btn-chip" type="button" data-display="${q.displayValue}">${escapeHtml(q.label)}</button>`).join('')}
         </div>
         <form id="log-form">
           <div class="row">
@@ -279,8 +395,8 @@
               <input id="runDate" name="runDate" type="date" value="${today()}" required />
             </div>
             <div class="field">
-              <label for="km">Kilometres</label>
-              <input id="km" name="km" type="number" min="0.1" max="500" step="0.1" required placeholder="e.g. 12.5" />
+              <label for="distance">${escapeHtml(unitWord().replace(/^./, (c) => c.toUpperCase()))} (${u})</label>
+              <input id="distance" name="distance" type="number" min="0.001" max="${maxRunDisplay()}" step="0.001" required placeholder="e.g. ${distanceUnit() === 'mi' ? '3.107' : '12.345'}" />
             </div>
           </div>
           <div class="field">
@@ -297,7 +413,7 @@
           ${runs.map((r) => `
             <div class="log-item" data-run="${r.id}">
               <div>
-                <strong>${formatKm(r.km)} km</strong>
+                <strong>${formatDistWithUnit(r.km)}</strong>
                 <div class="meta">${escapeHtml(r.runDate)}${r.note ? ' · ' + escapeHtml(r.note) : ''}</div>
               </div>
               <div class="log-actions">
@@ -334,22 +450,23 @@
       render();
     };
 
-    main.querySelectorAll('[data-km]').forEach((btn) => {
-      btn.onclick = () => { document.getElementById('km').value = btn.dataset.km; };
+    main.querySelectorAll('[data-display]').forEach((btn) => {
+      btn.onclick = () => { document.getElementById('distance').value = btn.dataset.display; };
     });
 
     document.getElementById('log-form').onsubmit = async (e) => {
       e.preventDefault();
       try {
+        const km = toKm(e.target.distance.value);
         const body = {
           runDate: e.target.runDate.value,
-          km: Number(e.target.km.value),
+          km,
           note: e.target.note.value,
         };
         const data = await api(`/api/shoes/${shoe.id}/runs`, { method: 'POST', body });
         state.detail.shoe = data.shoe;
         state.detail.runs = [data.run, ...state.detail.runs];
-        toast(`Logged ${formatKm(data.run.km)} km`);
+        toast(`Logged ${formatDistWithUnit(data.run.km)}`);
         render();
       } catch (err) {
         toast(err.message);
@@ -380,6 +497,8 @@
 
   function openShoeModal(shoe = null) {
     const editing = !!shoe;
+    const u = unitLabel();
+    const startingDisplay = shoe ? fromKm(shoe.startingKm) : 0;
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -399,8 +518,8 @@
               </select>
             </div>
             <div class="field">
-              <label for="starting-km">Starting km</label>
-              <input id="starting-km" name="startingKm" type="number" min="0" step="0.1" value="${shoe ? shoe.startingKm : 0}" />
+              <label for="starting-distance">Starting ${u}</label>
+              <input id="starting-distance" type="number" min="0" step="0.001" value="${startingDisplay}" />
             </div>
           </div>
           <div class="field">
@@ -450,7 +569,6 @@
     cameraInput.onchange = (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      // Prefer camera file for submit: clear upload input and assign via DataTransfer to name=photo
       const dt = new DataTransfer();
       dt.items.add(file);
       photoInput.files = dt.files;
@@ -459,7 +577,12 @@
     };
     backdrop.querySelector('#shoe-form').onsubmit = async (e) => {
       e.preventDefault();
-      const fd = new FormData(e.target);
+      const fd = new FormData();
+      fd.append('name', e.target.name.value);
+      fd.append('shoeType', e.target.shoeType.value);
+      const startKm = toKm(backdrop.querySelector('#starting-distance').value || 0);
+      fd.append('startingKm', String(startKm));
+      if (photoInput.files?.[0]) fd.append('photo', photoInput.files[0]);
       try {
         if (editing) {
           const data = await api(`/api/shoes/${shoe.id}`, { method: 'PATCH', body: fd });
@@ -480,6 +603,7 @@
   }
 
   function openEditRunModal(run) {
+    const u = unitLabel();
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -491,8 +615,8 @@
             <input id="edit-date" name="runDate" type="date" value="${escapeHtml(run.runDate)}" required />
           </div>
           <div class="field">
-            <label for="edit-km">Kilometres</label>
-            <input id="edit-km" name="km" type="number" min="0.1" max="500" step="0.1" value="${run.km}" required />
+            <label for="edit-distance">${escapeHtml(unitWord().replace(/^./, (c) => c.toUpperCase()))} (${u})</label>
+            <input id="edit-distance" name="distance" type="number" min="0.001" max="${maxRunDisplay()}" step="0.001" value="${fromKm(run.km)}" required />
           </div>
           <div class="field">
             <label for="edit-note">Note</label>
@@ -514,7 +638,7 @@
       try {
         const body = {
           runDate: e.target.runDate.value,
-          km: Number(e.target.km.value),
+          km: toKm(e.target.distance.value),
           note: e.target.note.value,
         };
         const data = await api(`/api/runs/${run.id}`, { method: 'PATCH', body });
@@ -537,6 +661,7 @@
     renderHeader();
     if (state.view === 'loading') return renderLoading();
     if (state.view === 'auth') return renderAuth();
+    if (state.view === 'settings') return renderSettings();
     if (state.view === 'detail') return renderDetail();
     return renderList();
   }
