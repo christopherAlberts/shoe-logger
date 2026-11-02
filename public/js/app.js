@@ -689,7 +689,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v6').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v7').catch(() => {});
     });
   }
 

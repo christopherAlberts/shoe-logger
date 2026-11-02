@@ -1,9 +1,9 @@
-const CACHE = 'shoelogger-v6';
+const CACHE = 'shoelogger-v7';
 const PRECACHE = [
   '/',
   '/index.html',
-  '/css/app.css?v=v6',
-  '/js/app.js?v=v6',
+  '/css/app.css?v=v7',
+  '/js/app.js?v=v7',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

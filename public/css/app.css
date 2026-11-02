@@ -15,6 +15,7 @@
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   --radius: 16px;
   --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --gutter: 1rem;
 }
 
 * { box-sizing: border-box; }
@@ -46,12 +47,13 @@ img { max-width: 100%; display: block; }
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.85rem 1.1rem;
+  padding: 0.85rem var(--gutter);
   background: rgba(255,255,255,0.9);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 .brand {
   display: flex;
@@ -93,8 +95,9 @@ img { max-width: 100%; display: block; }
   width: 100%;
   max-width: 960px;
   margin-inline: auto;
-  padding: 1.25rem 1rem 3rem;
+  padding: 1.25rem var(--gutter) 3rem;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .card {
@@ -196,6 +199,8 @@ img { max-width: 100%; display: block; }
   margin-bottom: 1rem;
   flex-wrap: wrap;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 .page-head h1 {
   margin: 0;
@@ -209,11 +214,13 @@ img { max-width: 100%; display: block; }
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1rem;
   width: 100%;
-  justify-items: start;
+  justify-content: center;
+  justify-items: center;
 }
 .shoe-card {
   width: 100%;
   max-width: 340px;
+  justify-self: center;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -221,6 +228,17 @@ img { max-width: 100%; display: block; }
   box-shadow: var(--shadow);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+@media (max-width: 599px) {
+  .shoe-grid {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+  .shoe-card {
+    max-width: none;
+    width: 100%;
+    justify-self: stretch;
+  }
 }
 .shoe-card:hover {
   transform: translateY(-2px);
