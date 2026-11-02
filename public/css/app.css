@@ -103,7 +103,8 @@ img { max-width: 100%; display: block; }
 }
 
 .field { margin-bottom: 0.9rem; }
-.field label {
+.field label,
+.field-label {
   display: block;
   font-size: 0.85rem;
   font-weight: 600;
@@ -370,4 +371,61 @@ img { max-width: 100%; display: block; }
   object-fit: cover;
   border-radius: 12px;
   margin-top: 0.5rem;
+}
+
+.password-wrap {
+  position: relative;
+}
+.password-wrap input {
+  padding-right: 2.75rem;
+}
+.password-toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--ink);
+  background: #f1f5f9;
+  outline: none;
+}
+.password-toggle:focus-visible {
+  outline: 2px solid var(--teal-soft);
+}
+.password-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.photo-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+.photo-actions .photo-option label.file-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+.photo-actions input[type="file"] {
+  width: 100%;
+}
+.photo-option-camera[hidden] {
+  display: none !important;
 }

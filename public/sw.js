@@ -1,4 +1,4 @@
-const CACHE = 'shoelogger-v1';
+const CACHE = 'shoelogger-v2';
 const PRECACHE = ['/', '/index.html', '/css/app.css', '/js/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

@@ -62,6 +62,31 @@
     return Number.isInteger(v) ? String(v) : v.toFixed(1);
   }
 
+
+  const EYE_OPEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+  function isMobileCameraDevice() {
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const ua = navigator.userAgent || '';
+    const mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua);
+    return !!(coarse && mobileUa);
+  }
+
+  function bindPasswordToggle(root) {
+    root.querySelectorAll('[data-password-toggle]').forEach((btn) => {
+      const input = root.querySelector(`#${btn.getAttribute('aria-controls')}`);
+      if (!input) return;
+      btn.addEventListener('click', () => {
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        btn.innerHTML = showing ? EYE_OPEN : EYE_OFF;
+      });
+    });
+  }
+
   function wearBadge(shoe) {
     if (shoe.wearLevel === 'replace') return `<span class="badge badge-red">${escapeHtml(shoe.wearLabel)}</span>`;
     if (shoe.wearLevel === 'replace-soon') return `<span class="badge badge-amber">${escapeHtml(shoe.wearLabel)}</span>`;
@@ -110,13 +135,17 @@
           </div>
           <div class="field">
             <label for="password">Password</label>
-            <input id="password" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" minlength="8" required />
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" minlength="8" required />
+              <button type="button" class="password-toggle" data-password-toggle aria-controls="password" aria-pressed="false" aria-label="Show password">${EYE_OPEN}</button>
+            </div>
             ${!isLogin ? '<div class="hint">At least 8 characters.</div>' : ''}
           </div>
           <button class="btn btn-primary" type="submit">${isLogin ? 'Log in' : 'Create free account'}</button>
         </form>
       </section>
     `;
+    bindPasswordToggle(main);
     main.querySelectorAll('.tab').forEach((btn) => {
       btn.onclick = () => {
         state.authMode = btn.dataset.mode;
@@ -375,8 +404,17 @@
             </div>
           </div>
           <div class="field">
-            <label for="photo">Photo ${editing ? '(optional new photo)' : ''}</label>
-            <input id="photo" name="photo" type="file" accept="image/*" />
+            <span class="field-label" id="photo-legend">Photo ${editing ? '(optional new photo)' : ''}</span>
+            <div class="photo-actions" role="group" aria-labelledby="photo-legend">
+              <div class="photo-option">
+                <label class="file-label" for="photo">Upload photo</label>
+                <input id="photo" name="photo" type="file" accept="image/*" />
+              </div>
+              <div class="photo-option photo-option-camera" id="photo-camera-wrap" hidden>
+                <label class="file-label" for="photo-camera">Take photo</label>
+                <input id="photo-camera" type="file" accept="image/*" capture="environment" />
+              </div>
+            </div>
             <div class="hint">JPG, PNG or WebP · max 5 MB</div>
             <img id="photo-preview" class="photo-preview" ${shoe?.photoUrl ? `src="${escapeHtml(shoe.photoUrl)}"` : 'hidden'} alt="" />
           </div>
@@ -391,12 +429,33 @@
     const close = () => backdrop.remove();
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
     backdrop.querySelector('#modal-cancel').onclick = close;
-    backdrop.querySelector('#photo').onchange = (e) => {
-      const file = e.target.files?.[0];
-      const img = backdrop.querySelector('#photo-preview');
+    const cameraWrap = backdrop.querySelector('#photo-camera-wrap');
+    const photoInput = backdrop.querySelector('#photo');
+    const cameraInput = backdrop.querySelector('#photo-camera');
+    const preview = backdrop.querySelector('#photo-preview');
+    if (isMobileCameraDevice()) {
+      cameraWrap.hidden = false;
+    }
+    function showPhotoPreview(file) {
       if (!file) return;
-      img.src = URL.createObjectURL(file);
-      img.hidden = false;
+      preview.src = URL.createObjectURL(file);
+      preview.hidden = false;
+    }
+    photoInput.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (cameraInput) cameraInput.value = '';
+      showPhotoPreview(file);
+    };
+    cameraInput.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // Prefer camera file for submit: clear upload input and assign via DataTransfer to name=photo
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      photoInput.files = dt.files;
+      cameraInput.value = '';
+      showPhotoPreview(file);
     };
     backdrop.querySelector('#shoe-form').onsubmit = async (e) => {
       e.preventDefault();
