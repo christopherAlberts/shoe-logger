@@ -1,0 +1,16 @@
+[Unit]
+Description=ShoeLogger PWA
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/Desktop/Projects/ShoeLogger Server
+Environment=NODE_ENV=production
+EnvironmentFile=/home/admin/Desktop/Projects/ShoeLogger Server/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
