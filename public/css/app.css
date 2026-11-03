@@ -675,20 +675,20 @@ img { max-width: 100%; display: block; }
 .coffee-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: #94a3b8;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #5f7380; /* muted teal-gray — a bit clearer than slate-400 */
   text-decoration: none;
-  opacity: 0.75;
+  opacity: 0.92;
 }
 .coffee-link:hover,
 .coffee-link:focus-visible {
-  color: #64748b;
+  color: #4a5f6a;
   opacity: 1;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .coffee-icon {
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1;
 }
