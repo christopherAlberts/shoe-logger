@@ -5,6 +5,9 @@
   const headerActions = document.getElementById('header-actions');
   const toastEl = document.getElementById('toast');
 
+  // Confirmed Buy Me a Coffee: Strebla Innovations (shoelogger.streblainnovations.com).
+  const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/streblainnovations';
+
   const KM_PER_MI = 1.609344;
   const DEFAULT_MAX_KM = 800;
   const WEAR_AMBER_RATIO = 500 / 800;
@@ -986,6 +989,23 @@
     main.innerHTML = `<div class="card empty"><p>Loading…</p></div>`;
   }
 
+
+  function ensureCoffeeFooter() {
+    if (document.getElementById('coffee-footer')) return;
+    const footer = document.createElement('footer');
+    footer.id = 'coffee-footer';
+    footer.className = 'site-footer';
+    footer.innerHTML = `
+      <a class="coffee-link" href="${BUY_ME_A_COFFEE_URL}" target="_blank" rel="noopener">
+        <span class="coffee-icon" aria-hidden="true">☕</span>
+        <span>Buy me a coffee</span>
+      </a>
+    `;
+    const app = document.getElementById('app');
+    if (app) app.appendChild(footer);
+    else document.body.appendChild(footer);
+  }
+
   function render() {
     renderHeader();
     if (state.view === 'loading') return renderLoading();
@@ -1002,6 +1022,7 @@
   }
 
   async function boot() {
+    ensureCoffeeFooter();
     try {
       const me = await api('/api/me');
       state.user = me.user;
@@ -1062,7 +1083,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v13').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v14').catch(() => {});
     });
   }
 

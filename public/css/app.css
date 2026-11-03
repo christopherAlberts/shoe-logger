@@ -663,3 +663,32 @@ img { max-width: 100%; display: block; }
 .notif-text { font-size: 0.9rem; line-height: 1.35; word-break: break-word; }
 .notif-meta { margin-top: 0.25rem; font-size: 0.75rem; color: var(--muted); }
 .notif-empty { padding: 1rem 0.85rem; color: var(--muted); font-size: 0.9rem; }
+
+
+/* Quiet support link — keep visually subdued */
+.site-footer {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.5rem var(--gutter) 1.25rem;
+  text-align: center;
+}
+.coffee-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-decoration: none;
+  opacity: 0.75;
+}
+.coffee-link:hover,
+.coffee-link:focus-visible {
+  color: #64748b;
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.coffee-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
