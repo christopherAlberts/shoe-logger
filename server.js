@@ -68,7 +68,26 @@ function setPublicCacheHeaders(res, filePath) {
     return;
   }
 
+  // Browsers/iOS often request these unversioned paths directly — never let CDN/browser
+  // keep a stale or SPA-fallback response for a week.
+  if (
+    base === 'favicon.ico' ||
+    base === 'apple-touch-icon.png' ||
+    base === 'apple-touch-icon-precomposed.png' ||
+    base.startsWith('apple-touch-icon')
+  ) {
+    res.setHeader('Cache-Control', NO_STORE);
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    return;
+  }
+
+  // Versioned icon URLs (?v=vN) can be cached; unversioned /icons/* still revalidate.
   if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico', '.woff', '.woff2'].includes(ext)) {
+    if (filePath.includes(`${path.sep}icons${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      return;
+    }
     res.setHeader('Cache-Control', CACHE_IMAGES);
     return;
   }
