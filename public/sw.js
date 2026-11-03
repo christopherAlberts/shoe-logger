@@ -1,12 +1,15 @@
-const CACHE = 'shoelogger-v11';
+const CACHE = 'shoelogger-v12';
 const PRECACHE = [
   '/',
   '/index.html',
-  '/css/app.css?v=v11',
-  '/js/app.js?v=v11',
-  '/manifest.webmanifest',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/css/app.css?v=v12',
+  '/js/app.js?v=v12',
+  '/manifest.webmanifest?v=v12',
+  '/icons/icon-192.png?v=v12',
+  '/icons/icon-512.png?v=v12',
+  '/icons/icon-192-maskable.png?v=v12',
+  '/icons/icon-512-maskable.png?v=v12',
+  '/icons/apple-touch-icon.png?v=v12',
 ];
 
 self.addEventListener('install', (event) => {
@@ -59,8 +62,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'ShoeLogger', {
       body: data.body || 'New signup',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon: '/icons/icon-192.png?v=v12',
+      badge: '/icons/icon-192.png?v=v12',
       tag: data.tag || 'shoelogger-new-user',
       data: { url: data.url || '/?adminNotif=1' },
       renotify: true,

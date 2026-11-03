@@ -13,7 +13,7 @@ configurePushFromEnv();
 const PORT = Number(process.env.PORT) || 8096;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 
-/** HTML/SW/manifest/JS/CSS: no-store so Cloudflare/browsers revalidate (SW cache is shoelogger-v11). */
+/** HTML/SW/manifest/JS/CSS: no-store so Cloudflare/browsers revalidate (SW cache is shoelogger-v12). */
 const NO_STORE = 'no-cache, no-store, must-revalidate';
 const CACHE_IMAGES = 'public, max-age=604800, immutable';
 
