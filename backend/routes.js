@@ -10,6 +10,13 @@ const rateLimit = require('express-rate-limit');
 const { db, uploadsDir, shoeTotals, recordNewUserNotification } = require('./db');
 const { requireAuth, signup, login, publicUser, isDesignatedAdmin } = require('./auth');
 const {
+  isPushConfigured,
+  getVapidPublicKey,
+  saveSubscription,
+  removeSubscription,
+  notifyAdminNewSignup,
+} = require('./push');
+const {
   WEAR_AMBER_KM,
   WEAR_RED_KM,
   MAX_RUN_KM,
@@ -100,6 +107,12 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+/** Replace cookie-session payload on auth to avoid carrying prior session fields. */
+function resetSession(req, userId) {
+  req.session = { userId };
+}
+
+
 function parseRunKm(body) {
   return parseDistanceKm(body.km, { min: 0, max: MAX_RUN_KM, allowZero: false });
 }
@@ -161,7 +174,12 @@ router.post(
     } catch (err) {
       console.error('Failed to record admin signup notification', err);
     }
-    req.session.userId = user.id;
+    try {
+      await notifyAdminNewSignup(user.email);
+    } catch (err) {
+      console.error('Failed to send admin push for signup', err);
+    }
+    resetSession(req, user.id);
     res.status(201).json({ user });
   })
 );
@@ -171,7 +189,7 @@ router.post(
   loginLimiter,
   asyncHandler(async (req, res) => {
     const user = await login(req.body.email, req.body.password);
-    req.session.userId = user.id;
+    resetSession(req, user.id);
     res.json({ user });
   })
 );
@@ -303,6 +321,39 @@ router.post(
       .prepare('SELECT COUNT(*) AS c FROM admin_notifications WHERE is_read = 0')
       .get();
     res.json({ ok: true, unreadCount: Number(row.c) || 0 });
+  })
+);
+
+
+router.get(
+  '/api/admin/push/vapid-public-key',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    if (!isPushConfigured()) {
+      return res.status(503).json({ error: 'Web Push is not configured on the server.' });
+    }
+    res.json({ publicKey: getVapidPublicKey(), configured: true });
+  })
+);
+
+router.post(
+  '/api/admin/push/subscribe',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    if (!isPushConfigured()) {
+      return res.status(503).json({ error: 'Web Push is not configured on the server.' });
+    }
+    saveSubscription(req.user.id, req.body?.subscription || req.body);
+    res.status(201).json({ ok: true });
+  })
+);
+
+router.post(
+  '/api/admin/push/unsubscribe',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    removeSubscription(req.user.id, req.body?.endpoint || null);
+    res.json({ ok: true });
   })
 );
 

@@ -628,6 +628,13 @@ img { max-width: 100%; display: block; }
   position: sticky;
   top: 0;
   background: var(--surface);
+  flex-wrap: wrap;
+}
+.notif-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
 }
 .notif-list { list-style: none; margin: 0; padding: 0; }
 .notif-item {

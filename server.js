@@ -7,11 +7,13 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const routes = require('./backend/routes');
 const { uploadsDir } = require('./backend/db');
+const { configurePushFromEnv } = require('./backend/push');
+configurePushFromEnv();
 
 const PORT = Number(process.env.PORT) || 8096;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 
-/** HTML/SW/manifest/JS/CSS: no-store so Cloudflare/browsers revalidate (SW cache is shoelogger-v10). */
+/** HTML/SW/manifest/JS/CSS: no-store so Cloudflare/browsers revalidate (SW cache is shoelogger-v11). */
 const NO_STORE = 'no-cache, no-store, must-revalidate';
 const CACHE_IMAGES = 'public, max-age=604800, immutable';
 
@@ -25,6 +27,15 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
+
+/** Never cache API JSON (esp. admin) at browser/CDN; private + vary on cookie. */
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Vary', 'Cookie');
+  next();
+});
 
 app.use(
   cookieSession({

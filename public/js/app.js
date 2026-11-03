@@ -177,6 +177,53 @@
       </select>`;
   }
 
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  async function enableAdminPushAlerts() {
+    if (!state.user || !state.user.isAdmin) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      toast('Push alerts are not supported in this browser.');
+      return;
+    }
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isIOS && !standalone) {
+      toast('On iPhone/iPad: Add ShoeLogger to your Home Screen, open it from there, then enable alerts.');
+      return;
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        toast('Notification permission was not granted.');
+        return;
+      }
+      const keyData = await api('/api/admin/push/vapid-public-key');
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+        });
+      }
+      await api('/api/admin/push/subscribe', {
+        method: 'POST',
+        body: { subscription: sub.toJSON() },
+      });
+      toast('Phone alerts enabled for new signups.');
+    } catch (err) {
+      toast(err.message || 'Could not enable alerts');
+    }
+  }
+
   function formatNotifTime(iso) {
     if (!iso) return '';
     const raw = String(iso).replace(' ', 'T');
@@ -237,7 +284,10 @@
     panel.innerHTML = `
       <div class="notif-panel-head">
         <strong>Notifications</strong>
-        <button type="button" class="btn btn-ghost btn-sm" id="notif-mark-all">Mark all read</button>
+        <div class="notif-panel-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="notif-enable-push">Enable phone alerts</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="notif-mark-all">Mark all read</button>
+        </div>
       </div>
       <ul class="notif-list">
         ${items.map((n) => `
@@ -258,6 +308,10 @@
       } catch (err) {
         toast(err.message);
       }
+    });
+    panel.querySelector('#notif-enable-push')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await enableAdminPushAlerts();
     });
   }
 
@@ -953,6 +1007,27 @@
       state.view = 'auth';
     }
     render();
+    if (state.user && state.user.isAdmin) {
+      const params = new URLSearchParams(location.search);
+      if (params.get('adminNotif') === '1') {
+        state.notifOpen = true;
+        renderHeader();
+        refreshAdminNotifications({ withList: true }).then(() => renderNotifPanel());
+        params.delete('adminNotif');
+        const next = params.toString();
+        history.replaceState({}, '', location.pathname + (next ? `?${next}` : '') + location.hash);
+      }
+    }
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (!event.data || event.data.type !== 'open-admin-notifications') return;
+      if (!state.user || !state.user.isAdmin) return;
+      state.notifOpen = true;
+      renderHeader();
+      refreshAdminNotifications({ withList: true }).then(() => renderNotifPanel());
+    });
   }
 
   document.addEventListener('click', (e) => {
@@ -978,7 +1053,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v10').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v11').catch(() => {});
     });
   }
 

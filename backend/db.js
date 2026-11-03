@@ -60,6 +60,18 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_admin_notifications_read ON admin_notifications(is_read, created_at);
+
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
 `);
 
 function backupDatabase() {
@@ -133,6 +145,27 @@ function ensureMigrations() {
         ON admin_notifications(is_read, created_at);
     `);
     console.log('Migration: created admin_notifications');
+  }
+
+  const pushTables = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='push_subscriptions'"
+  ).get();
+  if (!pushTables) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`
+      CREATE TABLE push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+    `);
+    console.log('Migration: created push_subscriptions');
   }
 }
 

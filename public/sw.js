@@ -1,9 +1,9 @@
-const CACHE = 'shoelogger-v10';
+const CACHE = 'shoelogger-v11';
 const PRECACHE = [
   '/',
   '/index.html',
-  '/css/app.css?v=v10',
-  '/js/app.js?v=v10',
+  '/css/app.css?v=v11',
+  '/js/app.js?v=v11',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -22,9 +22,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
+  // Never touch API or uploads — prevents caching admin JSON in the SW.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return;
 
-  // Always network-first for the service worker script itself (browsers already bypass SW for sw.js updates)
   if (url.pathname === '/sw.js') {
     event.respondWith(fetch(event.request));
     return;
@@ -43,5 +43,48 @@ self.addEventListener('fetch', (event) => {
         .catch(() => cached);
       return cached || network;
     })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'ShoeLogger', body: 'New signup', url: '/?adminNotif=1', tag: 'shoelogger-new-user' };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch (_) {
+    try {
+      const text = event.data && event.data.text();
+      if (text) data.body = text;
+    } catch (_) { /* ignore */ }
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'ShoeLogger', {
+      body: data.body || 'New signup',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || 'shoelogger-new-user',
+      data: { url: data.url || '/?adminNotif=1' },
+      renotify: true,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/?adminNotif=1';
+  event.waitUntil(
+    (async () => {
+      const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of all) {
+        if (client.url.includes(self.registration.scope.replace(/\/$/, '')) || client.url.startsWith(self.origin)) {
+          await client.focus();
+          if ('navigate' in client) {
+            try { await client.navigate(target); } catch (_) { /* ignore */ }
+          }
+          client.postMessage({ type: 'open-admin-notifications' });
+          return;
+        }
+      }
+      await clients.openWindow(target);
+    })()
   );
 });
