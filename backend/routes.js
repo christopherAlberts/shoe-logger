@@ -104,6 +104,35 @@ function parseRunKm(body) {
   return parseDistanceKm(body.km, { min: 0, max: MAX_RUN_KM, allowZero: false });
 }
 
+function parseSurface(value, { required = false, fallback = 'road' } = {}) {
+  if (value == null || value === '') {
+    if (required) {
+      const err = new Error('surface must be "road" or "trail".');
+      err.status = 400;
+      throw err;
+    }
+    return fallback === 'trail' ? 'trail' : 'road';
+  }
+  const v = String(value).trim().toLowerCase();
+  if (v !== 'road' && v !== 'trail') {
+    const err = new Error('surface must be "road" or "trail".');
+    err.status = 400;
+    throw err;
+  }
+  return v;
+}
+
+function mapRun(row) {
+  return {
+    id: row.id,
+    runDate: row.runDate ?? row.run_date,
+    km: round3(row.km),
+    surface: row.surface === 'trail' ? 'trail' : 'road',
+    note: row.note ?? null,
+    createdAt: row.createdAt ?? row.created_at,
+  };
+}
+
 // --- Auth ---
 router.get(
   '/api/me',
@@ -183,12 +212,12 @@ router.get(
     const shoe = enrichShoe(rows[0]);
     const runs = db
       .prepare(
-        `SELECT id, run_date AS runDate, km, note, created_at AS createdAt
+        `SELECT id, run_date AS runDate, km, surface, note, created_at AS createdAt
          FROM runs WHERE shoe_id = ? AND user_id = ?
          ORDER BY run_date DESC, id DESC`
       )
       .all(shoe.id, req.user.id)
-      .map((r) => ({ ...r, km: round3(r.km) }));
+      .map(mapRun);
     res.json({ shoe, runs });
   })
 );
@@ -309,15 +338,17 @@ router.post(
       return res.status(400).json({ error: 'Invalid date.' });
     }
     const note = req.body.note != null ? String(req.body.note).trim().slice(0, 500) : null;
+    const surface = parseSurface(req.body.surface, { fallback: shoe.shoe_type || 'road' });
 
     const info = db
-      .prepare(`INSERT INTO runs (shoe_id, user_id, run_date, km, note) VALUES (?, ?, ?, ?, ?)`)
-      .run(shoe.id, req.user.id, runDate, km, note || null);
+      .prepare(`INSERT INTO runs (shoe_id, user_id, run_date, km, surface, note) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(shoe.id, req.user.id, runDate, km, surface, note || null);
 
-    const run = db
-      .prepare(`SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`)
-      .get(info.lastInsertRowid);
-    run.km = round3(run.km);
+    const run = mapRun(
+      db
+        .prepare(`SELECT id, run_date AS runDate, km, surface, note, created_at AS createdAt FROM runs WHERE id = ?`)
+        .get(info.lastInsertRowid)
+    );
     const rows = shoeTotals(req.user.id, shoe.id);
     res.status(201).json({ run, shoe: enrichShoe(rows[0]) });
   })
@@ -345,19 +376,25 @@ router.patch(
     if (req.body.note !== undefined) {
       note = req.body.note == null ? null : String(req.body.note).trim().slice(0, 500) || null;
     }
+    let surface = run.surface === 'trail' ? 'trail' : 'road';
+    if (req.body.surface !== undefined) {
+      surface = parseSurface(req.body.surface, { required: true });
+    }
 
-    db.prepare(`UPDATE runs SET run_date = ?, km = ?, note = ? WHERE id = ? AND user_id = ?`).run(
+    db.prepare(`UPDATE runs SET run_date = ?, km = ?, surface = ?, note = ? WHERE id = ? AND user_id = ?`).run(
       runDate,
       km,
+      surface,
       note,
       run.id,
       req.user.id
     );
 
-    const updated = db
-      .prepare(`SELECT id, run_date AS runDate, km, note, created_at AS createdAt FROM runs WHERE id = ?`)
-      .get(run.id);
-    updated.km = round3(updated.km);
+    const updated = mapRun(
+      db
+        .prepare(`SELECT id, run_date AS runDate, km, surface, note, created_at AS createdAt FROM runs WHERE id = ?`)
+        .get(run.id)
+    );
     const rows = shoeTotals(req.user.id, run.shoe_id);
     res.json({ run: updated, shoe: enrichShoe(rows[0]) });
   })

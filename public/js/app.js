@@ -160,6 +160,19 @@
     return fromKm(500);
   }
 
+  function surfaceLabel(surface) {
+    return surface === 'trail' ? 'Trail' : 'Road';
+  }
+
+  function surfaceSelectHtml(id, name, selected) {
+    const sel = selected === 'trail' ? 'trail' : 'road';
+    return `
+      <select id="${id}" name="${name}">
+        <option value="road" ${sel === 'road' ? 'selected' : ''}>Road</option>
+        <option value="trail" ${sel === 'trail' ? 'selected' : ''}>Trail</option>
+      </select>`;
+  }
+
   function renderHeader() {
     if (!state.user) {
       headerActions.innerHTML = '';
@@ -391,6 +404,24 @@
         <form id="log-form">
           <div class="row">
             <div class="field">
+              <label for="run-shoe">Shoe</label>
+              <select id="run-shoe" name="shoeId">
+                ${(function () {
+                  const list = state.shoes.slice();
+                  if (!list.some((s) => s.id === shoe.id)) list.unshift(shoe);
+                  return list.filter((s) => !s.retired || s.id === shoe.id).map((s) => `
+                  <option value="${s.id}" data-surface="${s.shoeType === 'trail' ? 'trail' : 'road'}" ${s.id === shoe.id ? 'selected' : ''}>${escapeHtml(s.name)}${s.retired ? ' (retired)' : ''}</option>
+                `).join('');
+                })()}
+              </select>
+            </div>
+            <div class="field">
+              <label for="run-surface">Surface</label>
+              ${surfaceSelectHtml('run-surface', 'surface', shoe.shoeType)}
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
               <label for="runDate">Date</label>
               <input id="runDate" name="runDate" type="date" value="${today()}" required />
             </div>
@@ -413,8 +444,8 @@
           ${runs.map((r) => `
             <div class="log-item" data-run="${r.id}">
               <div>
-                <strong>${formatDistWithUnit(r.km)}</strong>
-                <div class="meta">${escapeHtml(r.runDate)}${r.note ? ' · ' + escapeHtml(r.note) : ''}</div>
+                <strong>${formatDistWithUnit(r.km)} <span class="surface-pill">${escapeHtml(surfaceLabel(r.surface))}</span></strong>
+                <div class="meta">${escapeHtml(r.runDate)} · ${escapeHtml(surfaceLabel(r.surface))}${r.note ? ' · ' + escapeHtml(r.note) : ''}</div>
               </div>
               <div class="log-actions">
                 <button class="btn btn-secondary btn-sm" type="button" data-edit="${r.id}">Edit</button>
@@ -454,20 +485,37 @@
       btn.onclick = () => { document.getElementById('distance').value = btn.dataset.display; };
     });
 
+    const shoeSelect = document.getElementById('run-shoe');
+    const surfaceSelect = document.getElementById('run-surface');
+    let surfaceTouched = false;
+    surfaceSelect.addEventListener('change', () => { surfaceTouched = true; });
+    shoeSelect.addEventListener('change', () => {
+      const opt = shoeSelect.selectedOptions[0];
+      const nextSurface = opt?.dataset.surface === 'trail' ? 'trail' : 'road';
+      if (!surfaceTouched) surfaceSelect.value = nextSurface;
+    });
+
     document.getElementById('log-form').onsubmit = async (e) => {
       e.preventDefault();
       try {
+        const selectedShoeId = Number(e.target.shoeId.value);
         const km = toKm(e.target.distance.value);
         const body = {
           runDate: e.target.runDate.value,
           km,
+          surface: e.target.surface.value,
           note: e.target.note.value,
         };
-        const data = await api(`/api/shoes/${shoe.id}/runs`, { method: 'POST', body });
-        state.detail.shoe = data.shoe;
-        state.detail.runs = [data.run, ...state.detail.runs];
-        toast(`Logged ${formatDistWithUnit(data.run.km)}`);
-        render();
+        const data = await api(`/api/shoes/${selectedShoeId}/runs`, { method: 'POST', body });
+        if (selectedShoeId === shoe.id) {
+          state.detail.shoe = data.shoe;
+          state.detail.runs = [data.run, ...state.detail.runs];
+          toast(`Logged ${formatDistWithUnit(data.run.km)}`);
+          render();
+        } else {
+          toast(`Logged ${formatDistWithUnit(data.run.km)} on ${data.shoe.name}`);
+          await openDetail(selectedShoeId);
+        }
       } catch (err) {
         toast(err.message);
       }
@@ -511,7 +559,7 @@
           </div>
           <div class="row">
             <div class="field">
-              <label for="shoe-type">Type</label>
+              <label for="shoe-type">Surface</label>
               <select id="shoe-type" name="shoeType">
                 <option value="road" ${!shoe || shoe.shoeType === 'road' ? 'selected' : ''}>Road</option>
                 <option value="trail" ${shoe?.shoeType === 'trail' ? 'selected' : ''}>Trail</option>
@@ -614,9 +662,15 @@
             <label for="edit-date">Date</label>
             <input id="edit-date" name="runDate" type="date" value="${escapeHtml(run.runDate)}" required />
           </div>
-          <div class="field">
-            <label for="edit-distance">${escapeHtml(unitWord().replace(/^./, (c) => c.toUpperCase()))} (${u})</label>
-            <input id="edit-distance" name="distance" type="number" min="0.001" max="${maxRunDisplay()}" step="0.001" value="${fromKm(run.km)}" required />
+          <div class="row">
+            <div class="field">
+              <label for="edit-distance">${escapeHtml(unitWord().replace(/^./, (c) => c.toUpperCase()))} (${u})</label>
+              <input id="edit-distance" name="distance" type="number" min="0.001" max="${maxRunDisplay()}" step="0.001" value="${fromKm(run.km)}" required />
+            </div>
+            <div class="field">
+              <label for="edit-surface">Surface</label>
+              ${surfaceSelectHtml('edit-surface', 'surface', run.surface)}
+            </div>
           </div>
           <div class="field">
             <label for="edit-note">Note</label>
@@ -639,6 +693,7 @@
         const body = {
           runDate: e.target.runDate.value,
           km: toKm(e.target.distance.value),
+          surface: e.target.surface.value,
           note: e.target.note.value,
         };
         const data = await api(`/api/runs/${run.id}`, { method: 'PATCH', body });
@@ -689,7 +744,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v7').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v8').catch(() => {});
     });
   }
 

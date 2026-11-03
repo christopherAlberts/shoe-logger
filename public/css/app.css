@@ -526,3 +526,18 @@ img { max-width: 100%; display: block; }
   font-weight: 500;
   cursor: pointer;
 }
+
+.surface-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}

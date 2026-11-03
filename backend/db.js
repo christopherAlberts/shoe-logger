@@ -40,6 +40,7 @@ db.exec(`
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     run_date TEXT NOT NULL,
     km REAL NOT NULL CHECK (km > 0),
+    surface TEXT NOT NULL DEFAULT 'road' CHECK (surface IN ('road', 'trail')),
     note TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -57,14 +58,40 @@ function backupDatabase() {
   return backupPath;
 }
 
+function tableColumns(table) {
+  return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+}
+
 function ensureMigrations() {
-  const cols = db.prepare('PRAGMA table_info(users)').all();
-  const names = new Set(cols.map((c) => c.name));
-  if (!names.has('distance_unit')) {
+  const userCols = tableColumns('users');
+  if (!userCols.has('distance_unit')) {
     const backup = backupDatabase();
     if (backup) console.log(`DB backup before migration: ${backup}`);
     db.exec(`ALTER TABLE users ADD COLUMN distance_unit TEXT NOT NULL DEFAULT 'km'`);
     console.log("Migration: added users.distance_unit (default 'km')");
+  }
+
+  const shoeCols = tableColumns('shoes');
+  if (!shoeCols.has('shoe_type')) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`ALTER TABLE shoes ADD COLUMN shoe_type TEXT NOT NULL DEFAULT 'road'`);
+    console.log("Migration: added shoes.shoe_type (default 'road')");
+  }
+
+  const runCols = tableColumns('runs');
+  if (!runCols.has('surface')) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`ALTER TABLE runs ADD COLUMN surface TEXT NOT NULL DEFAULT 'road'`);
+    db.exec(`
+      UPDATE runs
+      SET surface = COALESCE(
+        (SELECT shoe_type FROM shoes WHERE shoes.id = runs.shoe_id),
+        'road'
+      )
+    `);
+    console.log("Migration: added runs.surface (default from shoe_type)");
   }
 }
 
