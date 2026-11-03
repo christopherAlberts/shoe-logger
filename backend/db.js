@@ -105,7 +105,7 @@ function ensureMigrations() {
 }
 
 /** Sole admin account — never grant via signup. */
-const ADMIN_EMAIL = 'christopher.albert0@gmail.com';
+const ADMIN_EMAIL = 'christopher.alberts0@gmail.com';
 
 function ensureAdminFlags() {
   const cols = tableColumns('users');
