@@ -541,3 +541,40 @@ img { max-width: 100%; display: block; }
   background: var(--teal-soft);
   color: var(--teal-dark);
 }
+
+/* Admin dashboard */
+.admin-wrap { display: grid; gap: 0.75rem; }
+.page-title { margin: 0; font-size: 1.35rem; letter-spacing: -0.02em; }
+.admin-card { padding: 0; overflow: hidden; }
+.admin-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 560px;
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.admin-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: #f8fafc;
+}
+.admin-table tbody tr:last-child td { border-bottom: none; }
+.admin-email { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.admin-hint { margin: 0; padding: 0.65rem 0.85rem 0.85rem; }
+@media (max-width: 600px) {
+  .admin-table { font-size: 0.82rem; min-width: 520px; }
+  .admin-table th, .admin-table td { padding: 0.55rem 0.65rem; }
+}

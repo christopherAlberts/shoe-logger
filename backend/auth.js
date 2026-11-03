@@ -1,7 +1,7 @@
 'use strict';
 
 const bcrypt = require('bcryptjs');
-const { db } = require('./db');
+const { db, ADMIN_EMAIL } = require('./db');
 const { normalizeUnit } = require('./units');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,6 +11,11 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function isDesignatedAdmin(row) {
+  if (!row) return false;
+  return Number(row.is_admin) === 1 && normalizeEmail(row.email) === normalizeEmail(ADMIN_EMAIL);
+}
+
 function publicUser(row) {
   if (!row) return null;
   return {
@@ -18,6 +23,7 @@ function publicUser(row) {
     email: row.email,
     createdAt: row.created_at,
     distanceUnit: normalizeUnit(row.distance_unit),
+    isAdmin: isDesignatedAdmin(row),
   };
 }
 
@@ -38,7 +44,7 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Please sign in.' });
   }
   const user = db
-    .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+    .prepare('SELECT id, email, distance_unit, is_admin, created_at FROM users WHERE id = ?')
     .get(req.session.userId);
   if (!user) {
     req.session = null;
@@ -65,7 +71,7 @@ async function signup(email, password) {
   const info = db
     .prepare(`INSERT INTO users (email, password_hash, distance_unit) VALUES (?, ?, 'km')`)
     .run(normalized, password_hash);
-  const row = db.prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
+  const row = db.prepare('SELECT id, email, distance_unit, is_admin, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
   return publicUser(row);
 }
 
@@ -86,4 +92,4 @@ async function login(email, password) {
   return publicUser(user);
 }
 
-module.exports = { requireAuth, signup, login, validateCredentials, normalizeEmail, publicUser };
+module.exports = { requireAuth, signup, login, validateCredentials, normalizeEmail, publicUser, isDesignatedAdmin, ADMIN_EMAIL };

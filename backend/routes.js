@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const { db, uploadsDir, shoeTotals } = require('./db');
-const { requireAuth, signup, login, publicUser } = require('./auth');
+const { requireAuth, signup, login, publicUser, isDesignatedAdmin } = require('./auth');
 const {
   WEAR_AMBER_KM,
   WEAR_RED_KM,
@@ -141,7 +141,7 @@ router.get(
       return res.json({ user: null });
     }
     const user = db
-      .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+      .prepare('SELECT id, email, distance_unit, is_admin, created_at FROM users WHERE id = ?')
       .get(req.session.userId);
     if (!user) {
       req.session = null;
@@ -176,6 +176,67 @@ router.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Admin gate: re-reads the user from the DB on every request.
+ * Requires an authenticated session, is_admin=1, AND email matching ADMIN_EMAIL.
+ * 401 if logged out / unknown session user; 403 (no listing payload) otherwise.
+ */
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ error: 'Please sign in.' });
+  }
+  const user = db
+    .prepare('SELECT id, email, distance_unit, is_admin, created_at FROM users WHERE id = ?')
+    .get(req.session.userId);
+  if (!user) {
+    req.session = null;
+    return res.status(401).json({ error: 'Please sign in.' });
+  }
+  if (!isDesignatedAdmin(user)) {
+    return res.status(403).json({ error: 'Forbidden.' });
+  }
+  req.user = user;
+  next();
+}
+
+// --- Admin ---
+router.get(
+  '/api/admin/users',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const userCols = new Set(
+      db.prepare('PRAGMA table_info(users)').all().map((c) => c.name)
+    );
+    const hasName = userCols.has('name');
+    const nameSelect = hasName ? 'u.name AS name,' : 'NULL AS name,';
+    const rows = db
+      .prepare(
+        `SELECT
+           u.id,
+           u.email,
+           ${nameSelect}
+           u.created_at AS createdAt,
+           (SELECT COUNT(*) FROM shoes s WHERE s.user_id = u.id) AS shoeCount,
+           (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id) AS runCount,
+           (SELECT COALESCE(SUM(r.km), 0) FROM runs r WHERE r.user_id = u.id) AS totalKm
+         FROM users u
+         ORDER BY u.created_at ASC, u.id ASC`
+      )
+      .all();
+    res.json({
+      users: rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        name: row.name != null && String(row.name).trim() !== '' ? String(row.name) : null,
+        createdAt: row.createdAt,
+        shoeCount: Number(row.shoeCount) || 0,
+        runCount: Number(row.runCount) || 0,
+        totalKm: round3(row.totalKm),
+      })),
+    });
+  })
+);
+
 // --- Settings ---
 router.patch(
   '/api/settings',
@@ -187,7 +248,7 @@ router.patch(
     }
     db.prepare('UPDATE users SET distance_unit = ? WHERE id = ?').run(unit, req.user.id);
     const user = db
-      .prepare('SELECT id, email, distance_unit, created_at FROM users WHERE id = ?')
+      .prepare('SELECT id, email, distance_unit, is_admin, created_at FROM users WHERE id = ?')
       .get(req.user.id);
     res.json({ user: publicUser(user) });
   })

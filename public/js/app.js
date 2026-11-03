@@ -19,7 +19,8 @@
   const state = {
     user: null,
     shoes: [],
-    view: 'loading', // auth | list | detail | settings | loading
+    view: 'loading', // auth | list | detail | settings | admin | loading
+    adminUsers: null,
     shoeId: null,
     detail: null,
     authMode: 'login',
@@ -178,11 +179,24 @@
       headerActions.innerHTML = '';
       return;
     }
+    const adminBtn = state.user.isAdmin
+      ? '<button class="btn btn-ghost btn-sm" type="button" id="btn-admin">Admin</button>'
+      : '';
     headerActions.innerHTML = `
       <span class="user-chip" title="${escapeHtml(state.user.email)}">${escapeHtml(state.user.email)}</span>
+      ${adminBtn}
       <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">Settings</button>
       <button class="btn btn-ghost btn-sm" type="button" id="btn-logout">Log out</button>
     `;
+    const adminEl = document.getElementById('btn-admin');
+    if (adminEl) {
+      adminEl.onclick = () => {
+        state.view = 'admin';
+        state.adminUsers = null;
+        render();
+        loadAdminUsers();
+      };
+    }
     document.getElementById('btn-settings').onclick = () => {
       state.view = 'settings';
       render();
@@ -191,6 +205,7 @@
       await api('/api/logout', { method: 'POST', body: {} });
       state.user = null;
       state.shoes = [];
+      state.adminUsers = null;
       state.view = 'auth';
       render();
     };
@@ -708,6 +723,85 @@
     };
   }
 
+  function formatSignupDate(iso) {
+    if (!iso) return '—';
+    const d = String(iso).slice(0, 10);
+    return d || '—';
+  }
+
+  async function loadAdminUsers() {
+    if (!state.user || !state.user.isAdmin) {
+      state.adminUsers = null;
+      return;
+    }
+    try {
+      const data = await api('/api/admin/users');
+      state.adminUsers = data.users || [];
+      if (state.view === 'admin') render();
+    } catch (err) {
+      state.adminUsers = null;
+      toast(err.message || 'Admin load failed');
+      if (err.status === 403 || err.status === 401) {
+        state.view = 'list';
+        render();
+      }
+    }
+  }
+
+  function renderAdmin() {
+    if (!state.user || !state.user.isAdmin) {
+      state.view = 'list';
+      return renderList();
+    }
+    const rows = state.adminUsers;
+    const body = rows == null
+      ? `<div class="card empty"><p>Loading users…</p></div>`
+      : rows.length === 0
+        ? `<div class="card empty"><p>No users yet.</p></div>`
+        : `
+      <div class="card admin-card">
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Signed up</th>
+                <th>Shoes</th>
+                <th>Runs</th>
+                <th>Total km</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((u) => `
+                <tr>
+                  <td class="admin-email">${escapeHtml(u.email)}</td>
+                  <td>${u.name ? escapeHtml(u.name) : '—'}</td>
+                  <td>${escapeHtml(formatSignupDate(u.createdAt))}</td>
+                  <td>${Number(u.shoeCount) || 0}</td>
+                  <td>${Number(u.runCount) || 0}</td>
+                  <td>${escapeHtml(String(round3(u.totalKm || 0)))}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="hint admin-hint">${rows.length} user${rows.length === 1 ? '' : 's'}</p>
+      </div>`;
+    main.innerHTML = `
+      <button class="back-link" type="button" id="btn-back">← All shoes</button>
+      <section class="admin-wrap">
+        <h1 class="page-title">Admin</h1>
+        <p class="lead">All registered users (server-gated).</p>
+        ${body}
+      </section>
+    `;
+    document.getElementById('btn-back').onclick = () => {
+      state.view = 'list';
+      render();
+    };
+  }
+
   function renderLoading() {
     main.innerHTML = `<div class="card empty"><p>Loading…</p></div>`;
   }
@@ -717,6 +811,7 @@
     if (state.view === 'loading') return renderLoading();
     if (state.view === 'auth') return renderAuth();
     if (state.view === 'settings') return renderSettings();
+    if (state.view === 'admin') return renderAdmin();
     if (state.view === 'detail') return renderDetail();
     return renderList();
   }
@@ -744,7 +839,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v8').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v9').catch(() => {});
     });
   }
 

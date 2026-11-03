@@ -20,6 +20,7 @@ db.exec(`
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     distance_unit TEXT NOT NULL DEFAULT 'km' CHECK (distance_unit IN ('km', 'mi')),
+    is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -93,9 +94,36 @@ function ensureMigrations() {
     `);
     console.log("Migration: added runs.surface (default from shoe_type)");
   }
+
+  const userColsAfter = tableColumns('users');
+  if (!userColsAfter.has('is_admin')) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
+    console.log("Migration: added users.is_admin (default 0)");
+  }
+}
+
+/** Sole admin account — never grant via signup. */
+const ADMIN_EMAIL = 'christopher.albert0@gmail.com';
+
+function ensureAdminFlags() {
+  const cols = tableColumns('users');
+  if (!cols.has('is_admin')) return;
+  // Reset everyone, then promote only the designated admin (case-insensitive).
+  db.prepare('UPDATE users SET is_admin = 0').run();
+  const info = db
+    .prepare('UPDATE users SET is_admin = 1 WHERE lower(email) = lower(?)')
+    .run(ADMIN_EMAIL);
+  if (info.changes > 0) {
+    console.log(`Admin flag set for ${ADMIN_EMAIL}`);
+  } else {
+    console.log(`Admin email ${ADMIN_EMAIL} not found; no admin users`);
+  }
 }
 
 ensureMigrations();
+ensureAdminFlags();
 
 function shoeTotals(userId, shoeId = null) {
   const params = [userId];
@@ -126,4 +154,4 @@ function shoeTotals(userId, shoeId = null) {
     .all(...params);
 }
 
-module.exports = { db, dataDir, uploadsDir, shoeTotals, backupDatabase, dbPath };
+module.exports = { db, dataDir, uploadsDir, shoeTotals, backupDatabase, dbPath, ADMIN_EMAIL, ensureAdminFlags };
