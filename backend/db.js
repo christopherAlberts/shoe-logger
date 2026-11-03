@@ -31,6 +31,7 @@ db.exec(`
     photo_path TEXT,
     shoe_type TEXT NOT NULL DEFAULT 'road' CHECK (shoe_type IN ('road', 'trail')),
     starting_km REAL NOT NULL DEFAULT 0,
+    max_km REAL NOT NULL DEFAULT 800 CHECK (max_km > 0),
     retired INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -101,6 +102,13 @@ function ensureMigrations() {
     if (backup) console.log(`DB backup before migration: ${backup}`);
     db.exec(`ALTER TABLE shoes ADD COLUMN shoe_type TEXT NOT NULL DEFAULT 'road'`);
     console.log("Migration: added shoes.shoe_type (default 'road')");
+  }
+
+  if (!shoeCols.has('max_km')) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`ALTER TABLE shoes ADD COLUMN max_km REAL NOT NULL DEFAULT 800`);
+    console.log('Migration: added shoes.max_km (default 800)');
   }
 
   const runCols = tableColumns('runs');
@@ -214,6 +222,7 @@ function shoeTotals(userId, shoeId = null) {
          s.photo_path,
          s.shoe_type,
          s.starting_km,
+         s.max_km,
          s.retired,
          s.created_at,
          COALESCE(SUM(r.km), 0) AS logged_km,

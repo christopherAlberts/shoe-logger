@@ -3,6 +3,9 @@
 const KM_PER_MI = 1.609344;
 const WEAR_AMBER_KM = 500;
 const WEAR_RED_KM = 800;
+const DEFAULT_MAX_KM = 800;
+/** Amber fires at this fraction of a shoe's max (500/800). */
+const WEAR_AMBER_RATIO = WEAR_AMBER_KM / WEAR_RED_KM;
 const MAX_RUN_KM = 500;
 
 function round3(n) {
@@ -85,6 +88,8 @@ module.exports = {
   KM_PER_MI,
   WEAR_AMBER_KM,
   WEAR_RED_KM,
+  DEFAULT_MAX_KM,
+  WEAR_AMBER_RATIO,
   MAX_RUN_KM,
   round3,
   normalizeUnit,

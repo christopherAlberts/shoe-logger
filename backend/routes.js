@@ -17,8 +17,8 @@ const {
   notifyAdminNewSignup,
 } = require('./push');
 const {
-  WEAR_AMBER_KM,
-  WEAR_RED_KM,
+  DEFAULT_MAX_KM,
+  WEAR_AMBER_RATIO,
   MAX_RUN_KM,
   round3,
   normalizeUnit,
@@ -78,27 +78,36 @@ function deletePhoto(photoPath) {
   }
 }
 
-function wearStatus(totalKm) {
-  if (totalKm >= WEAR_RED_KM) return { level: 'replace', label: 'Replace', barClass: 'bar-red' };
-  if (totalKm >= WEAR_AMBER_KM) return { level: 'replace-soon', label: 'Replace soon', barClass: 'bar-amber' };
+function shoeMaxKm(row) {
+  const n = Number(row && row.max_km);
+  return Number.isFinite(n) && n > 0 ? round3(n) : DEFAULT_MAX_KM;
+}
+
+function wearStatus(totalKm, maxKm) {
+  const max = Number.isFinite(Number(maxKm)) && Number(maxKm) > 0 ? Number(maxKm) : DEFAULT_MAX_KM;
+  const amberAt = max * WEAR_AMBER_RATIO;
+  if (totalKm >= max) return { level: 'replace', label: 'Replace', barClass: 'bar-red' };
+  if (totalKm >= amberAt) return { level: 'replace-soon', label: 'Replace soon', barClass: 'bar-amber' };
   return { level: 'ok', label: null, barClass: 'bar-green' };
 }
 
 function enrichShoe(row) {
-  const wear = wearStatus(row.total_km);
+  const maxKm = shoeMaxKm(row);
+  const wear = wearStatus(row.total_km, maxKm);
   return {
     id: row.id,
     name: row.name,
     photoUrl: row.photo_path ? `/uploads/${row.photo_path}` : null,
     shoeType: row.shoe_type,
     startingKm: round3(row.starting_km),
+    maxKm,
     loggedKm: round3(row.logged_km),
     totalKm: round3(row.total_km),
     retired: !!row.retired,
     createdAt: row.created_at,
     wearLevel: wear.level,
     wearLabel: wear.label,
-    progressPct: Math.min(100, Math.round((row.total_km / WEAR_RED_KM) * 1000) / 10),
+    progressPct: Math.min(100, Math.round((row.total_km / maxKm) * 1000) / 10),
     barClass: wear.barClass,
   };
 }
@@ -423,6 +432,13 @@ router.post(
     if (req.body.startingKm != null && req.body.startingKm !== '') {
       startingKm = parseDistanceKm(req.body.startingKm, { min: 0, max: 100000, allowZero: true });
     }
+    let maxKm = DEFAULT_MAX_KM;
+    if (req.body.maxKm != null && req.body.maxKm !== '') {
+      maxKm = parseDistanceKm(req.body.maxKm, { min: 0, max: 100000, allowZero: false });
+    }
+    if (!(maxKm > 0)) {
+      return res.status(400).json({ error: 'Max distance must be greater than zero.' });
+    }
 
     let photoPath = null;
     try {
@@ -433,10 +449,10 @@ router.post(
 
     const info = db
       .prepare(
-        `INSERT INTO shoes (user_id, name, photo_path, shoe_type, starting_km)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO shoes (user_id, name, photo_path, shoe_type, starting_km, max_km)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(req.user.id, name, photoPath, shoeType, startingKm);
+      .run(req.user.id, name, photoPath, shoeType, startingKm, maxKm);
 
     const rows = shoeTotals(req.user.id, info.lastInsertRowid);
     res.status(201).json({ shoe: enrichShoe(rows[0]) });
@@ -467,6 +483,13 @@ router.patch(
     if (req.body.startingKm != null && req.body.startingKm !== '') {
       startingKm = parseDistanceKm(req.body.startingKm, { min: 0, max: 100000, allowZero: true });
     }
+    let maxKm = shoeMaxKm(shoe);
+    if (req.body.maxKm != null && req.body.maxKm !== '') {
+      maxKm = parseDistanceKm(req.body.maxKm, { min: 0, max: 100000, allowZero: false });
+    }
+    if (!(maxKm > 0)) {
+      return res.status(400).json({ error: 'Max distance must be greater than zero.' });
+    }
     let retired = shoe.retired;
     if (req.body.retired != null) {
       retired = req.body.retired === true || req.body.retired === 'true' || req.body.retired === '1' ? 1 : 0;
@@ -484,9 +507,9 @@ router.patch(
     }
 
     db.prepare(
-      `UPDATE shoes SET name = ?, photo_path = ?, shoe_type = ?, starting_km = ?, retired = ?
+      `UPDATE shoes SET name = ?, photo_path = ?, shoe_type = ?, starting_km = ?, max_km = ?, retired = ?
        WHERE id = ? AND user_id = ?`
-    ).run(name, photoPath, shoeType, startingKm, retired, shoe.id, req.user.id);
+    ).run(name, photoPath, shoeType, startingKm, maxKm, retired, shoe.id, req.user.id);
 
     const rows = shoeTotals(req.user.id, shoe.id);
     res.json({ shoe: enrichShoe(rows[0]) });

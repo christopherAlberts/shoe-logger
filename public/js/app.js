@@ -6,8 +6,8 @@
   const toastEl = document.getElementById('toast');
 
   const KM_PER_MI = 1.609344;
-  const WEAR_AMBER_KM = 500;
-  const WEAR_RED_KM = 800;
+  const DEFAULT_MAX_KM = 800;
+  const WEAR_AMBER_RATIO = 500 / 800;
 
   const QUICK_KM = [
     { label: '5K', km: 5 },
@@ -106,15 +106,14 @@
     return `${formatDist(kmStored)} ${unitLabel()}`;
   }
 
-  function wearCapKm() {
-    return WEAR_RED_KM;
+  function shoeMaxKm(shoe) {
+    const n = Number(shoe && shoe.maxKm);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_KM;
   }
 
   function wearThresholdText() {
-    const amber = formatDist(WEAR_AMBER_KM);
-    const red = formatDist(WEAR_RED_KM);
     const u = unitLabel();
-    return `Amber at ${amber} ${u}, red at ${red} ${u}.`;
+    return `Each shoe has its own max (${formatDist(DEFAULT_MAX_KM)} ${u} default). Amber from ~62.5% of max, red at/over max.`;
   }
 
   function quickButtons() {
@@ -127,12 +126,6 @@
     });
   }
 
-  function isMobileCameraDevice() {
-    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    const ua = navigator.userAgent || '';
-    const mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua);
-    return !!(coarse && mobileUa);
-  }
 
   function bindPasswordToggle(root) {
     root.querySelectorAll('[data-password-toggle]').forEach((btn) => {
@@ -387,7 +380,7 @@
     main.innerHTML = `
       <section class="card auth-wrap">
         <h1>Track every kilometre</h1>
-        <p class="lead">Log races and training on each pair. Get a clear signal when shoes hit 500–800 km.</p>
+        <p class="lead">Log races and training on each pair. Set a max distance per pair and get a clear replace signal.</p>
         <div class="tabs">
           <button class="tab ${isLogin ? 'active' : ''}" type="button" data-mode="login">Log in</button>
           <button class="tab ${!isLogin ? 'active' : ''}" type="button" data-mode="signup">Sign up</button>
@@ -457,7 +450,7 @@
               <span>Miles (mi)</span>
             </label>
           </fieldset>
-          <p class="hint">Race chips and the 500 / 800 km wear thresholds are shown in your chosen unit. Totals always show the unit label.</p>
+          <p class="hint">Race chips and each shoe's max-distance wear thresholds are shown in your chosen unit. Totals always show the unit label.</p>
           <button class="btn btn-primary" type="submit">Save settings</button>
         </form>
       </section>
@@ -484,7 +477,6 @@
   function renderList() {
     const active = state.shoes.filter((s) => !s.retired);
     const retired = state.shoes.filter((s) => s.retired);
-    const cap = formatDist(wearCapKm());
     main.innerHTML = `
       <div class="page-head">
         <div>
@@ -515,7 +507,7 @@
   function shoeCardHtml(shoe) {
     const u = unitLabel();
     const total = formatDist(shoe.totalKm);
-    const cap = formatDist(wearCapKm());
+    const cap = formatDist(shoeMaxKm(shoe));
     return `
       <article class="shoe-card ${shoe.retired ? 'retired' : ''}" data-id="${shoe.id}">
         ${photoBlock(shoe.photoUrl, 'shoe-photo')}
@@ -526,7 +518,7 @@
           </div>
           <p class="shoe-meta">${escapeHtml(shoe.shoeType)} · ${total} / ${cap} ${u}</p>
           <div class="km-line">
-            <span class="km-value">${total} <span class="unit-label">${u}</span></span>
+            <span class="km-value">${total} <span class="unit-label">${u}</span>
             <span class="km-cap">${shoe.progressPct}%</span>
           </div>
           <div class="progress" aria-hidden="true"><span class="${shoe.barClass}" style="width:${shoe.progressPct}%"></span></div>
@@ -554,7 +546,7 @@
   function renderDetail() {
     const { shoe, runs } = state.detail;
     const u = unitLabel();
-    const cap = formatDist(wearCapKm());
+    const cap = formatDist(shoeMaxKm(shoe));
     const quick = quickButtons();
     main.innerHTML = `
       <button class="back-link" type="button" id="btn-back">← All shoes</button>
@@ -733,6 +725,7 @@
     const editing = !!shoe;
     const u = unitLabel();
     const startingDisplay = shoe ? fromKm(shoe.startingKm) : 0;
+    const maxDisplay = shoe ? fromKm(shoeMaxKm(shoe)) : fromKm(DEFAULT_MAX_KM);
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -757,18 +750,18 @@
             </div>
           </div>
           <div class="field">
-            <span class="field-label" id="photo-legend">Photo ${editing ? '(optional new photo)' : ''}</span>
-            <div class="photo-actions" role="group" aria-labelledby="photo-legend">
-              <div class="photo-option">
-                <label class="file-label" for="photo">Upload photo</label>
-                <input id="photo" name="photo" type="file" accept="image/*" />
-              </div>
-              <div class="photo-option photo-option-camera" id="photo-camera-wrap" hidden>
-                <label class="file-label" for="photo-camera">Take photo</label>
-                <input id="photo-camera" type="file" accept="image/*" capture="environment" />
-              </div>
+            <label for="max-distance">Max ${u} before replace</label>
+            <input id="max-distance" type="number" min="0.001" step="0.001" required value="${maxDisplay}" />
+            <div class="hint">Amber from ~62.5% of this max. Default ${formatDist(DEFAULT_MAX_KM)} ${u}.</div>
+          </div>
+          <div class="field photo-field">
+            <span class="field-label" id="photo-legend">Photo</span>
+            <div class="photo-picker">
+              <input id="photo" name="photo" type="file" accept="image/*" class="photo-input" />
+              <label class="btn btn-secondary photo-btn" for="photo" id="photo-btn-label">${shoe?.photoUrl ? 'Change photo' : 'Add photo'}</label>
+              <button type="button" class="btn btn-ghost btn-sm" id="photo-clear" ${shoe?.photoUrl ? '' : 'hidden'}>Remove</button>
             </div>
-            <div class="hint">JPG, PNG or WebP · max 5 MB</div>
+            <div class="hint">One control — on phone you can Take Photo, pick from library, or choose a file. JPG, PNG or WebP · max 5 MB</div>
             <img id="photo-preview" class="photo-preview" ${shoe?.photoUrl ? `src="${escapeHtml(shoe.photoUrl)}"` : 'hidden'} alt="" />
           </div>
           <div class="modal-actions">
@@ -782,40 +775,56 @@
     const close = () => backdrop.remove();
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
     backdrop.querySelector('#modal-cancel').onclick = close;
-    const cameraWrap = backdrop.querySelector('#photo-camera-wrap');
     const photoInput = backdrop.querySelector('#photo');
-    const cameraInput = backdrop.querySelector('#photo-camera');
     const preview = backdrop.querySelector('#photo-preview');
-    if (isMobileCameraDevice()) {
-      cameraWrap.hidden = false;
-    }
-    function showPhotoPreview(file) {
-      if (!file) return;
-      preview.src = URL.createObjectURL(file);
+    const photoLabel = backdrop.querySelector('#photo-btn-label');
+    const clearBtn = backdrop.querySelector('#photo-clear');
+    const existingUrl = shoe?.photoUrl || null;
+    let objectUrl = null;
+
+    function setPreview(url, { isObjectUrl = false } = {}) {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+      if (!url) {
+        preview.removeAttribute('src');
+        preview.hidden = true;
+        photoLabel.textContent = 'Add photo';
+        clearBtn.hidden = true;
+        return;
+      }
+      if (isObjectUrl) objectUrl = url;
+      preview.src = url;
       preview.hidden = false;
+      photoLabel.textContent = 'Change photo';
+      clearBtn.hidden = false;
     }
+
     photoInput.onchange = (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      if (cameraInput) cameraInput.value = '';
-      showPhotoPreview(file);
+      setPreview(URL.createObjectURL(file), { isObjectUrl: true });
     };
-    cameraInput.onchange = (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      photoInput.files = dt.files;
-      cameraInput.value = '';
-      showPhotoPreview(file);
+    clearBtn.onclick = () => {
+      photoInput.value = '';
+      if (existingUrl) setPreview(existingUrl);
+      else setPreview(null);
     };
+
     backdrop.querySelector('#shoe-form').onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData();
       fd.append('name', e.target.name.value);
       fd.append('shoeType', e.target.shoeType.value);
       const startKm = toKm(backdrop.querySelector('#starting-distance').value || 0);
+      const maxKm = toKm(backdrop.querySelector('#max-distance').value);
+      if (!(maxKm > 0)) {
+        toast(`Max ${u} must be greater than zero.`);
+        return;
+      }
       fd.append('startingKm', String(startKm));
+      fd.append('maxKm', String(maxKm));
       if (photoInput.files?.[0]) fd.append('photo', photoInput.files[0]);
       try {
         if (editing) {
@@ -1053,7 +1062,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v12').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v13').catch(() => {});
     });
   }
 
