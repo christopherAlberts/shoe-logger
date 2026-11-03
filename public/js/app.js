@@ -1083,7 +1083,7 @@
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v15').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v16').catch(() => {});
     });
   }
 

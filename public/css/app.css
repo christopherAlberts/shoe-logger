@@ -676,7 +676,7 @@ img { max-width: 100%; display: block; }
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: #5f7380; /* muted teal-gray — a bit clearer than slate-400 */
   text-decoration: none;
   opacity: 0.92;
@@ -689,6 +689,6 @@ img { max-width: 100%; display: block; }
   text-underline-offset: 2px;
 }
 .coffee-icon {
-  font-size: 1rem;
+  font-size: 1.2rem;
   line-height: 1;
 }
