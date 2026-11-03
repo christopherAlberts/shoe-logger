@@ -7,7 +7,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
-const { db, uploadsDir, shoeTotals } = require('./db');
+const { db, uploadsDir, shoeTotals, recordNewUserNotification } = require('./db');
 const { requireAuth, signup, login, publicUser, isDesignatedAdmin } = require('./auth');
 const {
   WEAR_AMBER_KM,
@@ -156,6 +156,11 @@ router.post(
   signupLimiter,
   asyncHandler(async (req, res) => {
     const user = await signup(req.body.email, req.body.password);
+    try {
+      recordNewUserNotification(user.id, user.email);
+    } catch (err) {
+      console.error('Failed to record admin signup notification', err);
+    }
     req.session.userId = user.id;
     res.status(201).json({ user });
   })
@@ -234,6 +239,70 @@ router.get(
         totalKm: round3(row.totalKm),
       })),
     });
+  })
+);
+
+
+router.get(
+  '/api/admin/notifications',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const rows = db
+      .prepare(
+        `SELECT id, type, user_email AS userEmail, user_id AS userId,
+                created_at AS createdAt, is_read AS isRead
+         FROM admin_notifications
+         ORDER BY created_at DESC, id DESC
+         LIMIT 100`
+      )
+      .all();
+    res.json({
+      notifications: rows.map((row) => ({
+        id: row.id,
+        type: row.type,
+        userEmail: row.userEmail,
+        userId: row.userId,
+        createdAt: row.createdAt,
+        read: Number(row.isRead) === 1,
+      })),
+    });
+  })
+);
+
+router.get(
+  '/api/admin/notifications/unread-count',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const row = db
+      .prepare('SELECT COUNT(*) AS c FROM admin_notifications WHERE is_read = 0')
+      .get();
+    res.json({ unreadCount: Number(row.c) || 0 });
+  })
+);
+
+router.post(
+  '/api/admin/notifications/mark-read',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    if (body.all === true) {
+      db.prepare('UPDATE admin_notifications SET is_read = 1 WHERE is_read = 0').run();
+    } else if (Array.isArray(body.ids) && body.ids.length) {
+      const ids = body.ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0);
+      if (!ids.length) {
+        return res.status(400).json({ error: 'ids must be positive integers.' });
+      }
+      const placeholders = ids.map(() => '?').join(',');
+      db.prepare(
+        `UPDATE admin_notifications SET is_read = 1 WHERE id IN (${placeholders})`
+      ).run(...ids);
+    } else {
+      return res.status(400).json({ error: 'Provide { all: true } or { ids: number[] }.' });
+    }
+    const row = db
+      .prepare('SELECT COUNT(*) AS c FROM admin_notifications WHERE is_read = 0')
+      .get();
+    res.json({ ok: true, unreadCount: Number(row.c) || 0 });
   })
 );
 

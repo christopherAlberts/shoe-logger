@@ -21,6 +21,9 @@
     shoes: [],
     view: 'loading', // auth | list | detail | settings | admin | loading
     adminUsers: null,
+    adminUnread: 0,
+    adminNotifs: null,
+    notifOpen: false,
     shoeId: null,
     detail: null,
     authMode: 'login',
@@ -174,31 +177,142 @@
       </select>`;
   }
 
+  function formatNotifTime(iso) {
+    if (!iso) return '';
+    const raw = String(iso).replace(' ', 'T');
+    const d = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
+    if (Number.isNaN(d.getTime())) return String(iso).slice(0, 16);
+    try {
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    }
+  }
+
+  async function refreshAdminNotifications({ withList = false } = {}) {
+    if (!state.user || !state.user.isAdmin) {
+      state.adminUnread = 0;
+      state.adminNotifs = null;
+      return;
+    }
+    try {
+      const countData = await api('/api/admin/notifications/unread-count');
+      state.adminUnread = Number(countData.unreadCount) || 0;
+      if (withList || state.notifOpen) {
+        const listData = await api('/api/admin/notifications');
+        state.adminNotifs = listData.notifications || [];
+      }
+      // Update badge/panel without full re-render if header already present
+      const badge = document.getElementById('notif-badge');
+      if (badge) {
+        if (state.adminUnread > 0) {
+          badge.hidden = false;
+          badge.textContent = state.adminUnread > 99 ? '99+' : String(state.adminUnread);
+        } else {
+          badge.hidden = true;
+          badge.textContent = '';
+        }
+      }
+      if (state.notifOpen) renderNotifPanel();
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        state.adminUnread = 0;
+        state.notifOpen = false;
+      }
+    }
+  }
+
+  function renderNotifPanel() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel) return;
+    const items = state.adminNotifs;
+    if (items == null) {
+      panel.innerHTML = `<div class="notif-empty">Loading…</div>`;
+      return;
+    }
+    if (!items.length) {
+      panel.innerHTML = `<div class="notif-empty">No notifications yet.</div>`;
+      return;
+    }
+    panel.innerHTML = `
+      <div class="notif-panel-head">
+        <strong>Notifications</strong>
+        <button type="button" class="btn btn-ghost btn-sm" id="notif-mark-all">Mark all read</button>
+      </div>
+      <ul class="notif-list">
+        ${items.map((n) => `
+          <li class="notif-item ${n.read ? 'is-read' : 'is-unread'}" data-id="${n.id}">
+            <div class="notif-text">New user signed up: <strong>${escapeHtml(n.userEmail)}</strong></div>
+            <div class="notif-meta">${escapeHtml(formatNotifTime(n.createdAt))}</div>
+          </li>
+        `).join('')}
+      </ul>
+    `;
+    panel.querySelector('#notif-mark-all')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const data = await api('/api/admin/notifications/mark-read', { method: 'POST', body: { all: true } });
+        state.adminUnread = Number(data.unreadCount) || 0;
+        await refreshAdminNotifications({ withList: true });
+        renderHeader();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  }
+
   function renderHeader() {
     if (!state.user) {
       headerActions.innerHTML = '';
+      state.notifOpen = false;
       return;
     }
     const adminBtn = state.user.isAdmin
       ? '<button class="btn btn-ghost btn-sm" type="button" id="btn-admin">Admin</button>'
       : '';
+    const notifBtn = state.user.isAdmin ? `
+      <div class="notif-wrap" id="notif-wrap">
+        <button class="btn btn-ghost btn-sm notif-bell" type="button" id="btn-notif" aria-label="Notifications" aria-expanded="${state.notifOpen ? 'true' : 'false'}">
+          <span aria-hidden="true">🔔</span>
+          <span class="notif-badge" id="notif-badge" ${state.adminUnread > 0 ? '' : 'hidden'}>${state.adminUnread > 99 ? '99+' : (state.adminUnread || '')}</span>
+        </button>
+        <div class="notif-panel" id="notif-panel" ${state.notifOpen ? '' : 'hidden'}></div>
+      </div>` : '';
     headerActions.innerHTML = `
       <span class="user-chip" title="${escapeHtml(state.user.email)}">${escapeHtml(state.user.email)}</span>
+      ${notifBtn}
       ${adminBtn}
       <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">Settings</button>
       <button class="btn btn-ghost btn-sm" type="button" id="btn-logout">Log out</button>
     `;
+    if (state.user.isAdmin && state.notifOpen) renderNotifPanel();
+
+    const notifEl = document.getElementById('btn-notif');
+    if (notifEl) {
+      notifEl.onclick = async (e) => {
+        e.stopPropagation();
+        state.notifOpen = !state.notifOpen;
+        renderHeader();
+        if (state.notifOpen) {
+          await refreshAdminNotifications({ withList: true });
+          renderNotifPanel();
+          document.getElementById('notif-panel')?.removeAttribute('hidden');
+        }
+      };
+    }
     const adminEl = document.getElementById('btn-admin');
     if (adminEl) {
       adminEl.onclick = () => {
         state.view = 'admin';
         state.adminUsers = null;
+        state.notifOpen = false;
         render();
         loadAdminUsers();
       };
     }
     document.getElementById('btn-settings').onclick = () => {
       state.view = 'settings';
+      state.notifOpen = false;
       render();
     };
     document.getElementById('btn-logout').onclick = async () => {
@@ -206,6 +320,9 @@
       state.user = null;
       state.shoes = [];
       state.adminUsers = null;
+      state.adminUnread = 0;
+      state.adminNotifs = null;
+      state.notifOpen = false;
       state.view = 'auth';
       render();
     };
@@ -828,6 +945,7 @@
       if (state.user) {
         await loadShoes();
         state.view = 'list';
+        if (state.user.isAdmin) await refreshAdminNotifications();
       } else {
         state.view = 'auth';
       }
@@ -837,9 +955,30 @@
     render();
   }
 
+  document.addEventListener('click', (e) => {
+    if (!state.notifOpen) return;
+    const wrap = document.getElementById('notif-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      state.notifOpen = false;
+      const panel = document.getElementById('notif-panel');
+      if (panel) panel.hidden = true;
+      const btn = document.getElementById('btn-notif');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    if (state.user && state.user.isAdmin) refreshAdminNotifications({ withList: state.notifOpen });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.user && state.user.isAdmin) {
+      refreshAdminNotifications({ withList: state.notifOpen });
+    }
+  });
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=v9').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=v10').catch(() => {});
     });
   }
 

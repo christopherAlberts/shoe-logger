@@ -49,6 +49,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_shoes_user ON shoes(user_id);
   CREATE INDEX IF NOT EXISTS idx_runs_shoe ON runs(shoe_id);
   CREATE INDEX IF NOT EXISTS idx_runs_user ON runs(user_id);
+
+  CREATE TABLE IF NOT EXISTS admin_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK (type IN ('new_user')),
+    user_email TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_admin_notifications_read ON admin_notifications(is_read, created_at);
 `);
 
 function backupDatabase() {
@@ -102,6 +113,27 @@ function ensureMigrations() {
     db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
     console.log("Migration: added users.is_admin (default 0)");
   }
+
+  const notifTables = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='admin_notifications'"
+  ).get();
+  if (!notifTables) {
+    const backup = backupDatabase();
+    if (backup) console.log(`DB backup before migration: ${backup}`);
+    db.exec(`
+      CREATE TABLE admin_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL CHECK (type IN ('new_user')),
+        user_email TEXT NOT NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1))
+      );
+      CREATE INDEX IF NOT EXISTS idx_admin_notifications_read
+        ON admin_notifications(is_read, created_at);
+    `);
+    console.log('Migration: created admin_notifications');
+  }
 }
 
 /** Sole admin account — never grant via signup. */
@@ -124,6 +156,14 @@ function ensureAdminFlags() {
 
 ensureMigrations();
 ensureAdminFlags();
+
+function recordNewUserNotification(userId, email) {
+  db.prepare(
+    `INSERT INTO admin_notifications (type, user_email, user_id, is_read)
+     VALUES ('new_user', ?, ?, 0)`
+  ).run(String(email), userId == null ? null : Number(userId));
+}
+
 
 function shoeTotals(userId, shoeId = null) {
   const params = [userId];
@@ -154,4 +194,4 @@ function shoeTotals(userId, shoeId = null) {
     .all(...params);
 }
 
-module.exports = { db, dataDir, uploadsDir, shoeTotals, backupDatabase, dbPath, ADMIN_EMAIL, ensureAdminFlags };
+module.exports = { db, dataDir, uploadsDir, shoeTotals, backupDatabase, dbPath, ADMIN_EMAIL, ensureAdminFlags, recordNewUserNotification };
